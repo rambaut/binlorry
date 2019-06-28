@@ -2,15 +2,15 @@
 Copyright 2019 Andrew Rambaut (a.rambaut@ed.ac.uk)
 https://github.com/rambaut/Binlorry
 
-This module contains the main script for Binlorry. It is executed when a user runs `binlorry`
+This module contains the main script for BinLorry. It is executed when a user runs `binlorry`
 (after installation) or `binlorry-runner.py` (directly from the source directory).
 
-This file is part of Binlorry. Binlorry is free software: you can redistribute it and/or modify
+This file is part of BinLorry. BinLorry is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by the Free Software Foundation,
-either version 3 of the License, or (at your option) any later version. Binlorry is distributed in
+either version 3 of the License, or (at your option) any later version. BinLorry is distributed in
 the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
-details. You should have received a copy of the GNU General Public License along with Binlorry. If
+details. You should have received a copy of the GNU General Public License along with BinLorry. If
 not, see <http://www.gnu.org/licenses/>.
 """
 
@@ -47,8 +47,8 @@ def get_arguments():
     """
     Parse the command line arguments.
     """
-    parser = argparse.ArgumentParser(description='Binlorry: a tool for binning sequencing reads into '
-                                                 'folders based on header information or read properties.,
+    parser = argparse.ArgumentParser(description='BinLorry: a tool for binning sequencing reads into '
+                                                 'folders based on header information or read properties.',
                                      formatter_class=MyHelpFormatter, add_help=False)
     main_group = parser.add_argument_group('Main options')
     main_group.add_argument('-i', '--input', required=True,
