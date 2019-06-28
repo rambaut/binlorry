@@ -22,7 +22,7 @@ import shutil
 import re
 from collections import defaultdict
 from .misc import load_fasta_or_fastq, print_table, red, bold_underline, MyHelpFormatter, int_to_str
-from .nanopore_read import NanoporeRead
+from .read import load_reads, output_reads
 from .version import __version__
 
 
@@ -30,12 +30,6 @@ def main():
     args = get_arguments()
     reads, check_reads, read_type = load_reads(args.input, args.verbosity, args.print_dest,
                                                args.check_reads)
-
-    if args.native_barcodes:
-        # construct a smaller set of search adapters with only the 12 barcodes to speed up the initial step
-        # search_adapters = [a for a in ADAPTERS if '(full sequence)' not in a.name and '(forward)' not in a.name]
-        search_adapters = NATIVE_BARCODES
-
 
     output_reads(reads, args.format, args.output, read_type, args.verbosity,
                  args.discard_middle, args.min_split_read_size, args.print_dest,
@@ -69,11 +63,11 @@ def get_arguments():
 
     binning_group = parser.add_argument_group('Binning settings',
                                               'Control the binning of reads based on header fields')
-    barcode_group.add_argument('-b', '--barcode_dir',
+    binning_group.add_argument('-b', '--barcode_dir',
                                help='Reads will be binned based on their barcode and saved to '
                                     'separate files in this directory (incompatible with '
                                     '--output)')
-    barcode_group.add_argument('--discard_unassigned', action='store_true',
+    binning_group.add_argument('--discard_unassigned', action='store_true',
                                help='Discard unassigned reads (instead of creating a "none" bin)')
 
     help_args = parser.add_argument_group('Help')
@@ -103,199 +97,6 @@ def get_arguments():
         sys.exit('Error: at least one thread required')
 
     return args
-
-
-def load_reads(input_file_or_directory, verbosity, print_dest, check_read_count):
-
-    # If the input is a file, just load reads from that file. The check reads will just be the
-    # first reads from that file.
-    if os.path.isfile(input_file_or_directory):
-        if verbosity > 0:
-            print('\n' + bold_underline('Loading reads'),
-                  flush=True, file=print_dest)
-            print(input_file_or_directory, flush=True, file=print_dest)
-        reads, read_type = load_fasta_or_fastq(input_file_or_directory)
-        if read_type == 'FASTA':
-            reads = [NanoporeRead(x[2], x[1], '') for x in reads]
-        else:  # FASTQ
-            reads = [NanoporeRead(x[4], x[1], x[3]) for x in reads]
-        check_reads = reads[:check_read_count]
-
-    # If the input is a directory, assume it's an Albacore directory and search it recursively for
-    # fastq files. The check reads will be spread over all of the input files.
-    elif os.path.isdir(input_file_or_directory):
-        if verbosity > 0:
-            print('\n' + bold_underline('Searching for FASTQ files'),
-                  flush=True, file=print_dest)
-        fastqs = sorted([os.path.join(dir_path, f)
-                         for dir_path, _, filenames in os.walk(input_file_or_directory)
-                         for f in filenames
-                         if f.lower().endswith('.fastq') or f.lower().endswith('.fastq.gz')])
-        if not fastqs:
-            sys.exit('Error: could not find fastq files in ' +
-                     input_file_or_directory)
-        reads = []
-        read_type = 'FASTQ'
-        check_reads = []
-        check_reads_per_file = int(round(check_read_count / len(fastqs)))
-        for fastq_file in fastqs:
-            if verbosity > 0:
-                print(fastq_file, flush=True, file=print_dest)
-            file_reads, _ = load_fasta_or_fastq(fastq_file)
-            file_reads = [NanoporeRead(x[4], x[1], x[3]) for x in file_reads]
-
-            albacore_barcode = get_albacore_barcode_from_path(fastq_file)
-            for read in file_reads:
-                read.albacore_barcode_call = albacore_barcode
-            reads += file_reads
-            check_reads += file_reads[:check_reads_per_file]
-        if verbosity > 0:
-            print('', flush=True, file=print_dest)
-
-    else:
-        sys.exit('Error: could not find ' + input_file_or_directory)
-
-    if verbosity > 0:
-        print(int_to_str(len(reads)) + ' reads loaded\n\n',
-              flush=True, file=print_dest)
-    return reads, check_reads, read_type
-
-
-def output_reads(reads, out_format, output, read_type, verbosity, discard_middle,
-                 min_split_size, print_dest, barcode_dir, barcode_labels, input_filename,
-                 untrimmed, threads, discard_unassigned):
-    if verbosity > 0:
-        trimmed_or_untrimmed = 'untrimmed' if untrimmed else 'trimmed'
-        if barcode_dir is not None:
-            verb = 'Saving '
-            destination = 'barcode-specific files'
-        elif output is None:
-            verb = 'Outputting '
-            destination = 'stdout'
-        else:
-            verb = 'Saving '
-            destination = 'file'
-        print(bold_underline(verb + trimmed_or_untrimmed + ' reads to ' + destination),
-              flush=True, file=print_dest)
-
-    if out_format == 'auto':
-        if output is None:
-            out_format = read_type.lower()
-            if barcode_dir is not None and input_filename.lower().endswith('.gz'):
-                out_format += '.gz'
-        elif '.fasta.gz' in output.lower():
-            out_format = 'fasta.gz'
-        elif '.fastq.gz' in output.lower():
-            out_format = 'fastq.gz'
-        elif '.fasta' in output.lower():
-            out_format = 'fasta'
-        elif '.fastq' in output.lower():
-            out_format = 'fastq'
-        else:
-            out_format = read_type.lower()
-
-    gzipped_out = False
-    gzip_command = 'gzip'
-    if out_format.endswith('.gz') and (barcode_dir is not None or output is not None):
-        gzipped_out = True
-        out_format = out_format[:-3]
-        if shutil.which('pigz'):
-            if verbosity > 0:
-                print('pigz found - using it to compress instead of gzip')
-            gzip_command = 'pigz -p ' + str(threads)
-        else:
-            if verbosity > 0:
-                print('pigz not found - using gzip to compress')
-
-    # Output reads to barcode bins.
-    if barcode_dir is not None:
-        if not os.path.isdir(barcode_dir):
-            os.makedirs(barcode_dir)
-        barcode_files = {}
-        barcode_read_counts, barcode_base_counts = defaultdict(
-            int), defaultdict(int)
-        for read in reads:
-            barcode_name = read.barcode_call
-            if discard_unassigned and barcode_name == 'none':
-                continue
-            if out_format == 'fasta':
-                read_str = read.get_fasta(
-                    min_split_size, discard_middle, untrimmed, barcode_labels)
-            else:
-                read_str = read.get_fastq(
-                    min_split_size, discard_middle, untrimmed, barcode_labels)
-            if not read_str:
-                continue
-            if barcode_name not in barcode_files:
-                barcode_files[barcode_name] = \
-                    open(os.path.join(barcode_dir,
-                                      barcode_name + '.' + out_format), 'wt')
-            barcode_files[barcode_name].write(read_str)
-            barcode_read_counts[barcode_name] += 1
-            if untrimmed:
-                seq_length = len(read.seq)
-            else:
-                seq_length = read.seq_length_with_start_end_adapters_trimmed()
-            barcode_base_counts[barcode_name] += seq_length
-        table = [['Barcode', 'Reads', 'Bases', 'File']]
-
-        for barcode_name in sorted(barcode_files.keys()):
-            barcode_files[barcode_name].close()
-            bin_filename = os.path.join(
-                barcode_dir, barcode_name + '.' + out_format)
-
-            if gzipped_out:
-                if not os.path.isfile(bin_filename):
-                    continue
-                bin_filename_gz = bin_filename + '.gz'
-                if os.path.isfile(bin_filename_gz):
-                    os.remove(bin_filename_gz)
-                try:
-                    subprocess.check_output(gzip_command + ' ' + bin_filename,
-                                            stderr=subprocess.STDOUT, shell=True)
-                except subprocess.CalledProcessError:
-                    pass
-                bin_filename = bin_filename_gz
-
-            table_row = [barcode_name, int_to_str(barcode_read_counts[barcode_name]),
-                         int_to_str(barcode_base_counts[barcode_name]), bin_filename]
-            table.append(table_row)
-
-        if verbosity > 0:
-            print('')
-            print_table(table, print_dest, alignments='LRRL',
-                        max_col_width=60, col_separation=2)
-
-    # Output to all reads to stdout.
-    elif output is None:
-        for read in reads:
-            read_str = read.get_fasta(min_split_size, discard_middle, barcode_labels=barcode_labels) if out_format == 'fasta' \
-                else read.get_fastq(min_split_size, discard_middle, barcode_labels=barcode_labels)
-            print(read_str, end='')
-        if verbosity > 0:
-            print('Done', flush=True, file=print_dest)
-
-    # Output to all reads to file.
-    else:
-        if gzipped_out:
-            out_filename = 'TEMP_' + str(os.getpid()) + '.fastq'
-        else:
-            out_filename = output
-        with open(out_filename, 'wt') as out:
-            for read in reads:
-                read_str = read.get_fasta(min_split_size, discard_middle, barcode_labels=barcode_labels) if out_format == 'fasta' \
-                    else read.get_fastq(min_split_size, discard_middle, barcode_labels=barcode_labels)
-                out.write(read_str)
-        if gzipped_out:
-            subprocess.check_output(gzip_command + ' -c ' + out_filename + ' > ' + output,
-                                    stderr=subprocess.STDOUT, shell=True)
-            os.remove(out_filename)
-        if verbosity > 0:
-            print('\nSaved result to ' + os.path.abspath(output), file=print_dest)
-
-    if verbosity > 0:
-        print('', flush=True, file=print_dest)
-
 
 def output_progress_line(completed, total, print_dest, end_newline=False, step=10):
     if step > 1 and completed % step != 0 and completed != total:
