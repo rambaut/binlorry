@@ -15,27 +15,20 @@ not, see <http://www.gnu.org/licenses/>.
 """
 
 import argparse
+import gzip
 import os
 import sys
-import subprocess
-import shutil
-import re
-from collections import defaultdict
-from .misc import load_fasta_or_fastq, print_table, red, bold_underline, MyHelpFormatter, int_to_str
-from .read import load_reads, output_reads
+
+from .misc import bold_underline, MyHelpFormatter, int_to_str, \
+    get_sequence_file_type, get_compression_type
+from .read import Read
 from .version import __version__
 
 
 def main():
     args = get_arguments()
-    reads, check_reads, read_type = load_reads(args.input, args.verbosity, args.print_dest,
-                                               args.check_reads)
 
-    output_reads(reads, args.format, args.output, read_type, args.verbosity,
-                 args.discard_middle, args.min_split_read_size, args.print_dest,
-                 args.barcode_dir, args.barcode_labels, args.input, args.untrimmed, args.threads,
-                 args.discard_unassigned)
-
+    process_files(args.input, args.format, args.output, args.verbosity, args.print_dest)
 
 def get_arguments():
     """
@@ -44,13 +37,13 @@ def get_arguments():
     parser = argparse.ArgumentParser(description='BinLorry: a tool for binning sequencing reads into '
                                                  'folders based on header information or read properties.',
                                      formatter_class=MyHelpFormatter, add_help=False)
+
     main_group = parser.add_argument_group('Main options')
     main_group.add_argument('-i', '--input', required=True,
                             help='FASTA/FASTQ of input reads or a directory which will be '
                                  'recursively searched for FASTQ files (required)')
     main_group.add_argument('-o', '--output',
-                            help='Filename for FASTA or FASTQ of trimmed reads (if not set, '
-                                 'trimmed reads will be printed to stdout)')
+                            help='Filename for FASTA or FASTQ of filtered reads')
     main_group.add_argument('--format', choices=['auto', 'fasta', 'fastq', 'fasta.gz', 'fastq.gz'],
                             default='auto',
                             help='Output format for the reads - if auto, the '
@@ -61,15 +54,6 @@ def get_arguments():
                                  '3 = full - output will go to stdout if reads are saved to '
                                  'a file and stderr if reads are printed to stdout')
 
-    binning_group = parser.add_argument_group('Binning settings',
-                                              'Control the binning of reads based on header fields')
-    binning_group.add_argument('-b', '--barcode_dir',
-                               help='Reads will be binned based on their barcode and saved to '
-                                    'separate files in this directory (incompatible with '
-                                    '--output)')
-    binning_group.add_argument('--discard_unassigned', action='store_true',
-                               help='Discard unassigned reads (instead of creating a "none" bin)')
-
     help_args = parser.add_argument_group('Help')
     help_args.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
                            help='Show this help message and exit')
@@ -78,25 +62,98 @@ def get_arguments():
 
     args = parser.parse_args()
 
-    if args.barcode_dir is not None and args.output is not None:
-        sys.exit(
-            'Error: only one of the following options may be used: --output, --barcode_dir')
-
-    if args.untrimmed and args.barcode_dir is None:
-        sys.exit('Error: --untrimmed can only be used with --barcode_dir')
-
-    if args.barcode_dir is not None:
-        args.discard_middle = True
-
-    if args.output is None and args.barcode_dir is None:
+    if args.output is None:
+        # output is to stdout so print messages to stderr
         args.print_dest = sys.stderr
     else:
         args.print_dest = sys.stdout
 
-    if args.threads < 1:
-        sys.exit('Error: at least one thread required')
-
     return args
+
+
+def process_files(input_file_or_directory, out_format, out_filename, verbosity, print_dest):
+
+    read_files = []
+
+    if os.path.isfile(input_file_or_directory):
+        read_files.append(input_file_or_directory)
+
+        if verbosity > 0:
+            print('\n' + bold_underline('Processing reads'), flush=True, file=print_dest)
+
+    # If the input is a directory, search it recursively for fastq files.
+    elif os.path.isdir(input_file_or_directory):
+        if verbosity > 0:
+            print('\n' + bold_underline('Searching for FASTQ files'), flush=True, file=print_dest)
+
+        read_files = sorted([os.path.join(dir_path, f)
+                             for dir_path, _, filenames in os.walk(input_file_or_directory)
+                             for f in filenames
+                             if f.lower().endswith('.fastq') or f.lower().endswith('.fastq.gz') or
+                             f.lower().endswith('.fasta') or f.lower().endswith('.fasta.gz')])
+        if not read_files:
+            sys.exit('Error: could not find FASTQ/FASTA files in ' + input_file_or_directory)
+
+    else:
+        sys.exit('Error: could not find ' + input_file_or_directory)
+
+    with open(out_filename, 'wt') as out_file:
+        for read_file in read_files:
+
+            file_type = get_sequence_file_type(read_file)
+
+            if get_compression_type(read_file) == 'gz':
+                open_func = gzip.open
+            else:  # plain text
+                open_func = open
+
+            if verbosity > 0:
+                print(read_file, flush=True, file=print_dest)
+
+            if file_type == 'FASTA':
+                # For FASTA files we need to deal with line wrapped sequences...
+                with open_func(read_file, 'wt') as in_file:
+
+                    name = ''
+                    sequence = ''
+
+                    for line in in_file:
+                        line = line.strip()
+
+                        if not line:
+                            continue
+
+                        if line[0] == '>':  # Header line = start of new read
+                            if name:
+                                write_read(out_file, out_format, Read(name.split()[0], sequence, name))
+                                sequence = ''
+                            name = line[1:]
+                        else:
+                            sequence += line
+
+                    if name:
+                        write_read(out_file, out_format, Read(name.split()[0], sequence, name))
+
+            else: # FASTQ
+                with open_func(read_file, 'rt') as in_file:
+                    for line in in_file:
+                        full_name = line.strip()[1:]
+                        sequence = next(in_file).strip()
+                        next(in_file) # spacer line
+                        qualities = next(in_file).strip()
+                        write_read(out_file, out_format, Read(full_name, sequence, qualities))
+
+        if verbosity > 0:
+            print('', flush=True, file=print_dest)
+
+        if verbosity > 0:
+            print('\nSaved result to ' + os.path.abspath(out_filename), file=print_dest)
+
+
+def write_read(out_file, out_format, read):
+    read_str = read.get_fasta() if out_format == 'fasta' else read.get_fastq()
+    out_file.write(read_str)
+
 
 def output_progress_line(completed, total, print_dest, end_newline=False, step=10):
     if step > 1 and completed % step != 0 and completed != total:

@@ -31,14 +31,7 @@ class Read(object):
         if len(quals) < len(seq):
             self.quals += '+' * (len(seq) - len(quals))
 
-        self.reference_scores = {}
-
-        self.best_reference = ('none', 0.0)
-
-    def get_name(self, reference_labels=False):
-
-        if reference_labels:
-            return self.name + " reference=" + self.best_reference[0] + " ref_dist=" + self.best_reference[1]
+    def get_name(self):
 
         return self.name
 
@@ -48,17 +41,17 @@ class Read(object):
     def seq_length(self):
         return len(self.get_seq())
 
-    def get_fasta(self, reference_labels=False):
+    def get_fasta(self):
         if not self.seq:  # Don't return empty sequences
             return ''
             
-        return ''.join(['>', self.get_name(reference_labels), '\n', self.seq])
+        return ''.join(['>', self.get_name(), '\n', self.seq])
 
-    def get_fastq(self, reference_labels=False):
+    def get_fastq(self):
         if not self.seq:  # Don't return empty sequences
             return ''
 
-        return ''.join(['@', self.get_name(reference_labels), '\n', self.seq, '\n+\n', self.quals, '\n'])
+        return ''.join(['@', self.get_name(), '\n', self.seq, '\n+\n', self.quals, '\n'])
 
 def load_reads(input_file_or_directory, verbosity, print_dest, check_read_count):
 
