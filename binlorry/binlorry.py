@@ -134,7 +134,8 @@ def process_files(input_file_or_directory, index_table, bins, filters,
         # if verbosity > 0:
         #     print('\nSaved result to ' + os.path.abspath(out_filename), file=print_dest)
 
-    # Close all files...
+    for file in out_files:
+        file.close()
 
 def write_read(out_files, filters, bins, header, sequence, qualities):
     '''
@@ -146,19 +147,38 @@ def write_read(out_files, filters, bins, header, sequence, qualities):
     '''
 
     fields = get_header_fields(header)
-    print(fields)
 
-    out_file = get_output_file(out_files, filters, bins, fields)
-    if out_file:
-        if qualities: # FASTQ
-            read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
-        else:         # FASTA
-            read_str = ''.join(['>', header, '\n', sequence, '\n'])
+    if read_passes_filters(fields, filters):
+        out_file = get_bin_output_file(fields, bins, out_files)
+        if out_file:
+            if qualities: # FASTQ
+                read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
+            else:         # FASTA
+                read_str = ''.join(['>', header, '\n', sequence, '\n'])
 
-        out_file.write(read_str)
+            out_file.write(read_str)
 
 
-def get_output_file(out_files, filters, bins, fields):
+def read_passes_filters(header_fields, filters):
+    '''
+    Returns true if the read passes all the filters
+    :param fields:
+    :param header_filters:
+    :return:
+    '''
+
+    for filter in filters:
+        if filter['field'] in header_fields:
+            if not header_fields[filter['field']] in filter['values']:
+                return False
+        else:
+            return False
+
+    return True
+
+
+
+def get_bin_output_file(fields, bins, out_files):
     '''
     This function decides which file to send this read to based on the current bins and filters. If
     the read's fields do not pass the filters then None is returned. Otherwise the file that is associated
@@ -168,14 +188,23 @@ def get_output_file(out_files, filters, bins, fields):
     :return: the appropriate output file if passes the filter, None if not
     '''
 
-    # Bins are not implemented yet
-    # if bins:
-    #     return None
+    if bins:
+        bin_name = ""
 
-    if not out_files['all']:
-        out_files['all'] = open(out_files.prefix + out_files.suffix, "wt")
+        for bin in bins:
+            if bin in fields:
+                bin_name += "_" + fields[bin]
 
-    return out_files['all']
+        if len(bin_name) > 0:
+            if not bin_name in out_files:
+                out_files[bin_name] = open(out_files['prefix'] + bin_name + out_files['suffix'], "wt")
+
+            return out_files[bin_name]
+
+    if not 'unbinned' in out_files:
+        out_files['unbinned'] = open(out_files['prefix'] + out_files['suffix'], "wt")
+
+    return out_files['unbinned']
 
 
 def get_header_fields(header):
@@ -186,9 +215,10 @@ def get_header_fields(header):
     :return: An object of key value pairs
     '''
 
-    fields = {}
-
     parts = header.split(' ')
+
+    fields = { 'name': parts[0] }
+
     for part in parts[1:]:
         (key, value) = part.split('=')
         fields[key] = value
@@ -239,7 +269,7 @@ def get_arguments():
     '''
 
     parser = argparse.ArgumentParser(description='BinLorry: a tool for binning sequencing reads into '
-                                                 'folders based on header information or read properties.',
+                                                 'files based on header information or read properties.',
                                      formatter_class=MyHelpFormatter, add_help=False)
 
     main_group = parser.add_argument_group('Main options')
