@@ -18,6 +18,7 @@ Run:
 binlorry --help
 ```
 
+### Command line interface
 ```
 usage: binlorry -i INPUT [-t CSV_FILE] -o OUTPUT [-v VERBOSITY]
                          [--bin-by FIELD [FIELD ...]]
@@ -57,7 +58,7 @@ Help:
   --version               Show program's version number and exit
 ```
 
-### Examples:
+### Examples
 
 `binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750`
 
