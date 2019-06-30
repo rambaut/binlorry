@@ -19,21 +19,225 @@ import gzip
 import os
 import sys
 
+import pandas as pd
+
 from .misc import bold_underline, MyHelpFormatter, int_to_str, \
     get_sequence_file_type, get_compression_type
-from .read import Read
 from .version import __version__
 
 
+def read_index_table(index_table_file):
+    index_table = pd.read_table(index_table_file)
+
+    return index_table
+
 def main():
+    '''
+    Entry point for BinLorry. Gets arguments, processes them and then calls process_files function
+    to do the actual work.
+    :return:
+    '''
     args = get_arguments()
 
-    process_files(args.input, args.format, args.output, args.verbosity, args.print_dest)
+    filters = []
+    if args.filter_by:
+        for filter_def in args.filter_by:
+            filters.append({ 'field': filter_def[0], 'values': filter_def[1:]})
+
+    print(args.bin_by)
+    print(filters)
+    print(args.min_length)
+    print(args.max_length)
+
+    index_table = None
+
+    if args.index_table_file:
+        index_table = read_index_table(args.index_table_file)
+
+    process_files(args.input, index_table, args.bin_by, filters,
+                  args.min_length, args.max_length,
+                  args.output,
+                  args.verbosity, args.print_dest)
+
+
+def process_files(input_file_or_directory, index_table, bins, filters,
+                  min_length, max_length, output_prefix, verbosity, print_dest):
+    """
+    Core function to process one or more input files and create the required output files.
+
+    Iterates through the reads in one or more input files and bins or filters them into the
+    output files as required.
+    """
+
+    read_files = get_input_files(input_file_or_directory, verbosity, print_dest)
+
+    # create a tree of bin files - the actual files are created for each value that
+    # is seen.
+    out_files = {
+        'prefix': output_prefix,
+        'suffix': '.fastq'
+    }
+
+    if bins:
+        for bin in bins:
+            out_files[bin] = {}
+
+    for read_file in read_files:
+
+        file_type = get_sequence_file_type(read_file)
+
+        if get_compression_type(read_file) == 'gz':
+            open_func = gzip.open
+        else:  # plain text
+            open_func = open
+
+        if verbosity > 0:
+            print(read_file, flush=True, file=print_dest)
+
+        if file_type == 'FASTA':
+            # For FASTA files we need to deal with line wrapped sequences...
+            with open_func(read_file, 'wt') as in_file:
+
+                name = ''
+                sequence = ''
+
+                for line in in_file:
+                    line = line.strip()
+
+                    if not line:
+                        continue
+
+                    if line[0] == '>':  # Header line = start of new read
+                        if name:
+                            write_read(out_files, filters, bins, name, sequence, None)
+                            sequence = ''
+                        name = line[1:]
+                    else:
+                        sequence += line
+
+                if name:
+                    write_read(out_files, filters, bins, name, sequence, None)
+
+        else: # FASTQ
+            with open_func(read_file, 'rt') as in_file:
+                for line in in_file:
+                    header = line.strip()[1:]
+                    sequence = next(in_file).strip()
+                    next(in_file) # spacer line
+                    qualities = next(in_file).strip()
+
+                    write_read(out_files, filters, bins, header, sequence, qualities)
+
+        if verbosity > 0:
+            print('', flush=True, file=print_dest)
+
+        # if verbosity > 0:
+        #     print('\nSaved result to ' + os.path.abspath(out_filename), file=print_dest)
+
+    # Close all files...
+
+def write_read(out_files, filters, bins, header, sequence, qualities):
+    '''
+    Writes a read in either FASTQ or FASTA format depending if qualities are given
+    :param out_file: The file to write to
+    :param header:  The header line
+    :param sequence: The sequence string
+    :param qualities: The qualities string (None if FASTA)
+    '''
+
+    fields = get_header_fields(header)
+    print(fields)
+
+    out_file = get_output_file(out_files, filters, bins, fields)
+    if out_file:
+        if qualities: # FASTQ
+            read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
+        else:         # FASTA
+            read_str = ''.join(['>', header, '\n', sequence, '\n'])
+
+        out_file.write(read_str)
+
+
+def get_output_file(out_files, filters, bins, fields):
+    '''
+    This function decides which file to send this read to based on the current bins and filters. If
+    the read's fields do not pass the filters then None is returned. Otherwise the file that is associated
+    with the appropriate bin is returned. This will be created if it hasn't been already and the handle
+    stored in `out_files`.
+
+    :return: the appropriate output file if passes the filter, None if not
+    '''
+
+    # Bins are not implemented yet
+    # if bins:
+    #     return None
+
+    if not out_files['all']:
+        out_files['all'] = open(out_files.prefix + out_files.suffix, "wt")
+
+    return out_files['all']
+
+
+def get_header_fields(header):
+    '''
+    Splits a FASTA/FASTQ header line into key=value fields and returns them as
+    an object.
+    :param header:
+    :return: An object of key value pairs
+    '''
+
+    fields = {}
+
+    parts = header.split(' ')
+    for part in parts[1:]:
+        (key, value) = part.split('=')
+        fields[key] = value
+
+    return fields
+
+
+
+def get_input_files(input_file_or_directory, verbosity, print_dest):
+    '''
+    Takes a path to a single file or a directory and returns a list of file paths to be processed.
+    :param input_file_or_directory: The input path
+    :param verbosity: Verbosity level to report
+    :param print_dest: Where to report (stdout or stderr)
+    :return: An array of file paths to process
+    '''
+
+    input_files = []
+
+    if os.path.isfile(input_file_or_directory):
+        input_files.append(input_file_or_directory)
+
+        if verbosity > 0:
+            print('\n' + bold_underline('Processing reads'), flush=True, file=print_dest)
+
+    # If the input is a directory, search it recursively for fastq files.
+    elif os.path.isdir(input_file_or_directory):
+        if verbosity > 0:
+            print('\n' + bold_underline('Searching for FASTQ files'), flush=True, file=print_dest)
+
+        input_files = sorted([os.path.join(dir_path, f)
+                              for dir_path, _, filenames in os.walk(input_file_or_directory)
+                              for f in filenames
+                              if f.lower().endswith('.fastq') or f.lower().endswith('.fastq.gz') or
+                              f.lower().endswith('.fasta') or f.lower().endswith('.fasta.gz')])
+        if not input_files:
+            sys.exit('Error: could not find FASTQ/FASTA files in ' + input_file_or_directory)
+
+    else:
+        sys.exit('Error: could not find ' + input_file_or_directory)
+
+    return input_files
+
 
 def get_arguments():
-    """
+    '''
     Parse the command line arguments.
-    """
+    '''
+
     parser = argparse.ArgumentParser(description='BinLorry: a tool for binning sequencing reads into '
                                                  'folders based on header information or read properties.',
                                      formatter_class=MyHelpFormatter, add_help=False)
@@ -42,17 +246,27 @@ def get_arguments():
     main_group.add_argument('-i', '--input', required=True,
                             help='FASTA/FASTQ of input reads or a directory which will be '
                                  'recursively searched for FASTQ files (required)')
-    main_group.add_argument('-o', '--output',
-                            help='Filename for FASTA or FASTQ of filtered reads')
-    main_group.add_argument('--format', choices=['auto', 'fasta', 'fastq', 'fasta.gz', 'fastq.gz'],
-                            default='auto',
-                            help='Output format for the reads - if auto, the '
-                                 'format will be chosen based on the output filename or the input '
-                                 'read format')
+    main_group.add_argument('-t', '--index-table', metavar='CSV_FILE', dest='index_table_file',
+                           help='A CSV/TSV file with metadata fields for reads (otherwise these are assumed '
+                                'to be in the read headers). This can also include a file and line number to '
+                                'improve performance.')
+    main_group.add_argument('-o', '--output', required=True,
+                            help='Output filename (or filename prefix)')
     main_group.add_argument('-v', '--verbosity', type=int, default=1,
                             help='Level of progress information: 0 = none, 1 = some, 2 = lots, '
                                  '3 = full - output will go to stdout if reads are saved to '
                                  'a file and stderr if reads are printed to stdout')
+
+    bin_group = parser.add_argument_group('Binning/Filtering options')
+    bin_group.add_argument('--bin-by', metavar='FIELD', nargs='+', dest='bin_by',
+                            help='Specify header field(s) to bin the reads by. For multiple fields these '
+                                 'will be nested in order specified.')
+    bin_group.add_argument('--filter-by', metavar='FILTER', action='append', nargs='+', dest='filter_by',
+                            help='Specify header field and accepted values to filter the reads by.')
+    bin_group.add_argument('-n', '--min-length', metavar='MIN', type=int, dest='min_length',
+                           help='Filter the reads by their length, specifying the minimum length.')
+    bin_group.add_argument('-x', '--max-length', metavar='MAX', type=int, dest='max_length',
+                           help='Filter the reads by their length, specifying the maximum length.')
 
     help_args = parser.add_argument_group('Help')
     help_args.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
@@ -71,99 +285,3 @@ def get_arguments():
     return args
 
 
-def process_files(input_file_or_directory, out_format, out_filename, verbosity, print_dest):
-
-    read_files = []
-
-    if os.path.isfile(input_file_or_directory):
-        read_files.append(input_file_or_directory)
-
-        if verbosity > 0:
-            print('\n' + bold_underline('Processing reads'), flush=True, file=print_dest)
-
-    # If the input is a directory, search it recursively for fastq files.
-    elif os.path.isdir(input_file_or_directory):
-        if verbosity > 0:
-            print('\n' + bold_underline('Searching for FASTQ files'), flush=True, file=print_dest)
-
-        read_files = sorted([os.path.join(dir_path, f)
-                             for dir_path, _, filenames in os.walk(input_file_or_directory)
-                             for f in filenames
-                             if f.lower().endswith('.fastq') or f.lower().endswith('.fastq.gz') or
-                             f.lower().endswith('.fasta') or f.lower().endswith('.fasta.gz')])
-        if not read_files:
-            sys.exit('Error: could not find FASTQ/FASTA files in ' + input_file_or_directory)
-
-    else:
-        sys.exit('Error: could not find ' + input_file_or_directory)
-
-    with open(out_filename, 'wt') as out_file:
-        for read_file in read_files:
-
-            file_type = get_sequence_file_type(read_file)
-
-            if get_compression_type(read_file) == 'gz':
-                open_func = gzip.open
-            else:  # plain text
-                open_func = open
-
-            if verbosity > 0:
-                print(read_file, flush=True, file=print_dest)
-
-            if file_type == 'FASTA':
-                # For FASTA files we need to deal with line wrapped sequences...
-                with open_func(read_file, 'wt') as in_file:
-
-                    name = ''
-                    sequence = ''
-
-                    for line in in_file:
-                        line = line.strip()
-
-                        if not line:
-                            continue
-
-                        if line[0] == '>':  # Header line = start of new read
-                            if name:
-                                write_read(out_file, out_format, Read(name.split()[0], sequence, name))
-                                sequence = ''
-                            name = line[1:]
-                        else:
-                            sequence += line
-
-                    if name:
-                        write_read(out_file, out_format, Read(name.split()[0], sequence, name))
-
-            else: # FASTQ
-                with open_func(read_file, 'rt') as in_file:
-                    for line in in_file:
-                        full_name = line.strip()[1:]
-                        sequence = next(in_file).strip()
-                        next(in_file) # spacer line
-                        qualities = next(in_file).strip()
-                        write_read(out_file, out_format, Read(full_name, sequence, qualities))
-
-        if verbosity > 0:
-            print('', flush=True, file=print_dest)
-
-        if verbosity > 0:
-            print('\nSaved result to ' + os.path.abspath(out_filename), file=print_dest)
-
-
-def write_read(out_file, out_format, read):
-    read_str = read.get_fasta() if out_format == 'fasta' else read.get_fastq()
-    out_file.write(read_str)
-
-
-def output_progress_line(completed, total, print_dest, end_newline=False, step=10):
-    if step > 1 and completed % step != 0 and completed != total:
-        return
-    progress_str = int_to_str(completed) + ' / ' + int_to_str(total)
-    if total > 0:
-        percent = 100.0 * completed / total
-    else:
-        percent = 0.0
-    progress_str += ' (' + '%.1f' % percent + '%)'
-
-    end_char = '\n' if end_newline else ''
-    print('\r' + progress_str, end=end_char, flush=True, file=print_dest)
