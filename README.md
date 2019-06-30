@@ -38,6 +38,11 @@ Binning/Filtering options:
 Help:
   -h, --help              Show this help message and exit
   --version               Show program's version number and exit
-
-Process finished with exit code 0
 ```
+
+Examples:
+
+`binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750`
+
+This would read all FASTQ or FASTA files in the directory `reads`, bin by the header field `barcode`, but only if this is `BC01` or `BC02` and if the length is between 550 and 750 nucleotides.
+It would use the file name prefix `barcode` resulting in the files: `barcode_BC01.fastq` and `barcode_BC02.fastq`
