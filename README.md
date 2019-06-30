@@ -1,6 +1,23 @@
 BinLorry is a tool for binning sequencing reads into folders or files by
 attributes encoded in their headers or by size.
 
+### Installing
+Clone the repository:
+```
+git clone https://github.com/rambaut/binlorry.git
+```
+
+Install:
+```
+cd binlorry
+python setup.py install
+```
+
+Run:
+```
+binlorry --help
+```
+
 ```
 usage: binlorry -i INPUT [-t CSV_FILE] -o OUTPUT [-v VERBOSITY]
                          [--bin-by FIELD [FIELD ...]]
@@ -40,7 +57,7 @@ Help:
   --version               Show program's version number and exit
 ```
 
-Examples:
+### Examples:
 
 `binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750`
 
