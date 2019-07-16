@@ -301,10 +301,10 @@ def get_arguments():
     main_group.add_argument('-i', '--input', required=True,
                             help='FASTA/FASTQ of input reads or a directory which will be '
                                  'recursively searched for FASTQ files (required)')
-    # main_group.add_argument('-t', '--index-table', metavar='CSV_FILE', dest='index_table_file',
-    #                        help='A CSV/TSV file with metadata fields for reads (otherwise these are assumed '
-    #                             'to be in the read headers). This can also include a file and line number to '
-    #                             'improve performance.')
+    main_group.add_argument('-t', '--index-table', metavar='CSV_FILE', dest='index_table_file',
+                           help='A CSV/TSV file with metadata fields for reads (otherwise these are assumed '
+                                'to be in the read headers). This can also include a file and line number to '
+                                'improve performance.')
     main_group.add_argument('-o', '--output', required=True,
                             help='Output filename (or filename prefix)')
     main_group.add_argument('-v', '--verbosity', type=int, default=1,
