@@ -26,11 +26,6 @@ from .misc import bold_underline, MyHelpFormatter, int_to_str, \
 from .version import __version__
 
 
-def read_index_table(index_table_file):
-    index_table = pd.read_csv(index_table_file)
-
-    return index_table
-
 def main():
     '''
     Entry point for BinLorry. Gets arguments, processes them and then calls process_files function
@@ -68,19 +63,13 @@ def main():
     index_table = None
 
     if args.index_table_file:
-        index_table = read_index_table(args.index_table_file)
-
-        # For each filter specified in args, filter the pd dataframe to only include the values given. 
-        # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
-        # Future add in how to handle if df returns empty (i.e. values not present)
-        for f in filters:
-            print(f)
-            try:
-                index_table=index_table.loc[(index_table[f["field"]].isin(f["values"]))] 
-            except:
-                print("Check if csv has '{}' column.".format(f["field"]))
+        unfiltered_index_table = read_index_table(args.index_table_file)
+        if args.filter_by:
+            index_table = filter_index_table(unfiltered_index_table, filters)
+        else:
+            index_table = unfiltered_index_table
             
-        for bin in args.bin_by:
+            
 
 
 
@@ -88,6 +77,25 @@ def main():
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
                   args.output,
                   args.verbosity, args.print_dest)
+
+
+def read_index_table(index_table_file):
+    unfiltered_index_table = pd.read_csv(index_table_file)
+    return unfiltered_index_table
+
+def filter_index_table(unfiltered_index_table, filters):
+
+    # For each filter specified in args, filter the pd dataframe to only include the values given. 
+    # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
+    # Future add in how to handle if df returns empty (i.e. values not present)
+    filtered_index_table = index_table
+    for filter in filters:
+        try:
+            filtered_index_table=filtered_index_table.loc[(filtered_index_table[filter["field"]].isin(filter["values"]))] 
+        except:
+            print("Check if csv has '{}' column.".format(filter["field"]))
+
+    return filtered_index_table
 
 
 def process_files(input_file_or_directory, index_table, bins, filters,
