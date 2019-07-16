@@ -68,7 +68,7 @@ def main():
             index_table = filter_index_table(unfiltered_index_table, filters)
         else:
             index_table = unfiltered_index_table
-            
+
             
 
 
@@ -194,8 +194,8 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
     if length > min_length and length < max_length:
 
         fields = get_header_fields(header)
-
-        if read_passes_filters(fields, filters):
+        
+        if read_passes_filters(fields, index_table, filters):
             counts['passed'] += 1
 
             out_file = get_bin_output_file(fields, bins, out_files)
@@ -212,27 +212,28 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
                 counts['bins'][out_file.name] += 1
 
 
-def read_passes_filters(header_fields, filters):
+
+def read_passes_filters(header_fields,index_table,filters):
     '''
     Returns true if the read passes all the filters
     :param fields:
     :param header_filters:
     :return:
     '''
+    if args.index_table_file:
+        return header_fields["name"] in list(index_table["read"])
 
-    for filter in filters:
-        if args.index_table_file:
+    else:
 
-
-
-        if filter['field'] in header_fields:
-            if not header_fields[filter['field']] in filter['values']:
+        for filter in filters:
+        
+            if filter['field'] in header_fields:
+                if not header_fields[filter['field']] in filter['values']:
+                    return False
+            else:
                 return False
-        else:
-            return False
 
     return True
-
 
 
 def get_bin_output_file(fields, bins, out_files):
