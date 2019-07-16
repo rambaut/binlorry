@@ -27,7 +27,7 @@ from .version import __version__
 
 
 def read_index_table(index_table_file):
-    index_table = pd.read_table(index_table_file)
+    index_table = pd.read_csv(index_table_file)
 
     return index_table
 
@@ -67,8 +67,22 @@ def main():
 
     index_table = None
 
-    # if args.index_table_file:
-    #     index_table = read_index_table(args.index_table_file)
+    if args.index_table_file:
+        index_table = read_index_table(args.index_table_file)
+
+        # For each filter specified in args, filter the pd dataframe to only include the values given. 
+        # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
+        # Future add in how to handle if df returns empty (i.e. values not present)
+        for f in filters:
+            print(f)
+            try:
+                index_table=index_table.loc[(index_table[f["field"]].isin(f["values"]))] 
+            except:
+                print("Check if csv has '{}' column.".format(f["field"]))
+            
+        for bin in args.bin_by:
+
+
 
     process_files(args.input, index_table, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
@@ -199,6 +213,10 @@ def read_passes_filters(header_fields, filters):
     '''
 
     for filter in filters:
+        if args.index_table_file:
+
+
+
         if filter['field'] in header_fields:
             if not header_fields[filter['field']] in filter['values']:
                 return False
