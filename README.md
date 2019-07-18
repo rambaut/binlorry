@@ -33,14 +33,18 @@ However, ensure that the ``pandas`` package is installed before use.
 
 ## Quick Usage Examples
 
-```binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750```
+```
+binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750
+```
 
 This would read all FASTQ or FASTA files in the directory `reads`, bin by the header field `barcode`, but only if this is `BC01` or `BC02` and if the length is between 550 and 750 nucleotides.
 It would use the file name prefix `barcode` resulting in the files: `barcode_BC01.fastq` and `barcode_BC02.fastq`
 
-```binlorry -i my_file.fastq -t my_file.csv -o filtered --filter-by reference Type_1 -n 550 -x 750```
+```
+binlorry -i my_file.fastq -t my_file.csv -o filtered --filter-by reference Type_1 -n 550 -x 750
+```
 
-The above example will take in reads from ``my_file.fastq`` and a csv report ``my_file.csv``. Assuming that ``my_file.csv`` has at least the following structure:
+The above example will take in reads from ``my_file.fastq`` and a csv report ``my_file.csv``. Assuming that ``my_file.csv`` has at least the structure shown below, and that the read names in the csv match those in the input read file, BinLorry will filter reads and output only those with Type_1 reference between 550 and 750 bases in length.
 
 | read                                 | reference | 
 |:--------------------------------------|-----------:| 
@@ -48,7 +52,6 @@ The above example will take in reads from ``my_file.fastq`` and a csv report ``m
 | a39069c5-c493-45f8-9fa8-49eccb5c1807 | Type_1    | 
 | 868efa99-f4c1-4a68-87a9-196a44b997e0 | Type_2    | 
 
-BinLorry will filter reads and output only those with Type_1 reference between 550 and 750 bases in length.
 
 
 ## Command line interface
@@ -62,6 +65,9 @@ Main options:
   -i INPUT, --input INPUT
                           FASTA/FASTQ of input reads or a directory which will
                           be recursively searched for FASTQ files (required)
+  -t INPUT_CSV, --index-table INPUT_CSV
+                           A CSV file with metadata fields for reads (otherwise these are assumed
+                           to be in the read headers). This can also include a file and line number to improve performance. Assumes read name is first column of the csv.'
   -o OUTPUT, --output OUTPUT
                           Output filename (or filename prefix)
   -v VERBOSITY, --verbosity VERBOSITY
@@ -77,7 +83,7 @@ Binning/Filtering options:
                           specified.
   --filter-by FILTER [FILTER ...]
                           Specify header field and accepted values to filter
-                          the reads by. Multiple--filter-by options can be
+                          the reads by. Multiple filter-by options can be
                           specified.
   -n MIN, --min-length MIN
                           Filter the reads by their length, specifying the
