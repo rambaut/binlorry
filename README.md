@@ -1,7 +1,10 @@
-BinLorry is a tool for binning sequencing reads into folders or files by
-attributes encoded in their headers or by size.
+# BinLorry
 
-### Installing
+BinLorry is a flexible tool for binning and filtering sequencing reads into distinct files. Reads can be binned and filtered by any
+attributes encoded in their headers, documented in a CSV file or by length.
+
+## Installing
+
 Clone the repository:
 ```
 git clone https://github.com/rambaut/binlorry.git
@@ -18,7 +21,37 @@ Run:
 binlorry --help
 ```
 
-### Command line interface
+### Run without installation
+
+BinLorry can also be run directly from the repository clone, without installation:
+```
+git clone https://github.com/rambaut/binlorry.git
+python binlorry/binlorry-runner.py -h
+```
+However, ensure that the ``pandas`` package is installed before use.
+
+
+## Quick Usage Examples
+
+```binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750```
+
+This would read all FASTQ or FASTA files in the directory `reads`, bin by the header field `barcode`, but only if this is `BC01` or `BC02` and if the length is between 550 and 750 nucleotides.
+It would use the file name prefix `barcode` resulting in the files: `barcode_BC01.fastq` and `barcode_BC02.fastq`
+
+```binlorry -i my_file.fastq -t my_file.csv -o filtered --filter-by reference Type_1 -n 550 -x 750```
+
+The above example will take in reads from ``my_file.fastq`` and a csv report ``my_file.csv``. Assuming that ``my_file.csv`` has at least the following structure:
+
+| read                                 | reference | 
+|:--------------------------------------|-----------:| 
+| f66db89e-de96-4fa7-813a-6c5a89586100 | Type_1    | 
+| a39069c5-c493-45f8-9fa8-49eccb5c1807 | Type_1    | 
+| 868efa99-f4c1-4a68-87a9-196a44b997e0 | Type_2    | 
+
+BinLorry will filter reads and output only those with Type_1 reference between 550 and 750 bases in length.
+
+
+## Command line interface
 ```
 usage: binlorry -i INPUT [-t CSV_FILE] -o OUTPUT [-v VERBOSITY]
                          [--bin-by FIELD [FIELD ...]]
@@ -57,10 +90,3 @@ Help:
   -h, --help              Show this help message and exit
   --version               Show program's version number and exit
 ```
-
-### Examples
-
-`binlorry -i reads/ -o barcode --bin-by barcode --filter-by barcode BC01 BC02 -n 550 -x 750`
-
-This would read all FASTQ or FASTA files in the directory `reads`, bin by the header field `barcode`, but only if this is `BC01` or `BC02` and if the length is between 550 and 750 nucleotides.
-It would use the file name prefix `barcode` resulting in the files: `barcode_BC01.fastq` and `barcode_BC02.fastq`
