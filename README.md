@@ -12,8 +12,7 @@ git clone https://github.com/rambaut/binlorry.git
 
 Install:
 ```
-cd binlorry
-python setup.py install
+pip3 install ./binlorry
 ```
 
 Run:
