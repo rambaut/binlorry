@@ -77,7 +77,7 @@ def read_index_table(index_table_file):
 def filter_index_table(unfiltered_index_table, filters):
     # For each filter specified in args, filter the pd dataframe to only include the values given. 
     # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
-    filtered_index_table = unfiltered_index_table
+
     for filter in filters:
         try:
             filtered_index_table = unfiltered_index_table.loc[(unfiltered_index_table[filter["field"]].isin(filter["values"]))] 
@@ -175,15 +175,14 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
     :param sequence: The sequence string
     :param qualities: The qualities string (None if FASTA)
     '''
-
     counts['read'] += 1
 
     length = len(sequence)
 
     if length > min_length and length < max_length:
+
         if index_table is not None:
             fields = get_csv_fields(index_table,header)
-        
         else:
             fields = get_header_fields(header)
         
@@ -202,8 +201,6 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
                 if not out_file.name in counts['bins']:
                     counts['bins'][out_file.name] = 0
                 counts['bins'][out_file.name] += 1
-
-    
 
 def read_passes_filters(header_fields,index_table,filters):
     '''
@@ -257,7 +254,6 @@ def get_bin_output_file(fields, bins, out_files):
 
     return out_files['unbinned']
 
-
 def get_csv_fields(index_table,header):
     name=header.split(' ')[0]
     row=index_table.query('read=="{}"'.format(name))
@@ -265,7 +261,6 @@ def get_csv_fields(index_table,header):
     for i in row:
         fields[i]=list(row[i])[0]
     return fields
-
 
 def get_header_fields(header):
     '''
@@ -284,7 +279,6 @@ def get_header_fields(header):
         fields[key] = value
 
     return fields
-
 
 def get_input_files(input_file_or_directory, verbosity, print_dest):
     '''
@@ -315,12 +309,10 @@ def get_input_files(input_file_or_directory, verbosity, print_dest):
 
     return input_files
 
-
 def get_arguments():
     '''
     Parse the command line arguments.
     '''
-
     parser = argparse.ArgumentParser(description='BinLorry: a tool for binning sequencing reads into '
                                                  'files based on header information or read properties.',
                                      formatter_class=MyHelpFormatter, add_help=False)
