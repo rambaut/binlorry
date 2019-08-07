@@ -284,8 +284,11 @@ def get_header_fields(header):
     fields = { 'name': parts[0] }
 
     for part in parts[1:]:
-        (key, value) = part.split('=')
-        fields[key] = value
+        try:
+            (key, value) = part.split('=')
+            fields[key] = value
+        except:
+            pass
 
     return fields
 
