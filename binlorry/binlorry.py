@@ -215,7 +215,7 @@ def read_passes_filters(header_fields,index_table,filters,print_dest):
     if index_table is not None:
         if filters:
             filtered_index_table = filter_index_table(index_table, filters, print_dest)
-            return header_fields["name"] in list(filtered_index_table.iloc[:,0]) 
+            return header_fields["name"] in list(filtered_index_table["read_name"]) 
     else:
         for filter in filters:
     
