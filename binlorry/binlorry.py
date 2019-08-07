@@ -41,6 +41,7 @@ def main():
             filters.append({ 'field': filter_def[0], 'values': values})
 
     if args.verbosity > 0:
+        print(bold_underline("Bins and filters:"),flush=True, file=args.print_dest)
         for filter in filters:
             print("Filter reads unless " + filter['field'] + (" is one of: " if len(filter['values']) > 1 else " is "), end = '')
             for index, value in enumerate(filter['values']):
@@ -58,23 +59,25 @@ def main():
             print("Bin reads by ", end = '')
             for index, bin in enumerate(args.bin_by):
                 print((", " if index > 0 else "") + bin, end = '')
-            print()
+            print('\n')
 
     index_table = None
 
     if args.index_table_file:
-        index_table = read_index_table(args.index_table_file)
+        index_table = read_index_table(args.index_table_file,args.print_dest)
 
     process_files(args.input, index_table, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
                   args.output,
                   args.verbosity, args.print_dest)
 
-def read_index_table(index_table_file):
+def read_index_table(index_table_file,print_dest):
     unfiltered_index_table = pd.read_csv(index_table_file)
+    print(bold_underline('Headers:'), flush=True, file=print_dest)
+    print("\n".join(unfiltered_index_table.columns.values),flush=True, file=print_dest)
     return unfiltered_index_table
 
-def filter_index_table(unfiltered_index_table, filters):
+def filter_index_table(unfiltered_index_table, filters,print_dest):
     # For each filter specified in args, filter the pd dataframe to only include the values given. 
     # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
 
@@ -84,7 +87,7 @@ def filter_index_table(unfiltered_index_table, filters):
         except:
             print("Check if csv has '{}' column.".format(filter["field"]))
     if len(filtered_index_table)==0:
-        print("Warning: your filters have produced a dataframe of length 0.")
+        print(bold_underline("Warning: your filters have produced a dataframe of length 0."),flush=True, file=print_dest)
     return filtered_index_table
 
 def process_files(input_file_or_directory, index_table, bins, filters,
@@ -137,14 +140,14 @@ def process_files(input_file_or_directory, index_table, bins, filters,
 
                     if line[0] == '>':  # Header line = start of new read
                         if name:
-                            write_read(out_files, filters, bins, min_length, max_length, name, sequence, None, counts,index_table)
+                            write_read(out_files, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
                             sequence = ''
                         name = line[1:]
                     else:
                         sequence += line
 
                 if name:
-                    write_read(out_files, filters, bins, min_length, max_length, name, sequence, None, counts,index_table)
+                    write_read(out_files, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
 
         else: # FASTQ
             with open_func(read_file, 'rt') as in_file:
@@ -154,20 +157,20 @@ def process_files(input_file_or_directory, index_table, bins, filters,
                     next(in_file) # spacer line
                     qualities = next(in_file).strip()
 
-                    write_read(out_files, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table)
+                    write_read(out_files, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table,print_dest)
 
     for file in out_files:
         if hasattr(file, 'close'):
             file.close()
-
+    
     if verbosity > 0:
-        print('\nTotal reads read: ' + str(counts['read']), file=print_dest)
-        print('\nReads written: ' + str(counts['passed']), file=print_dest)
+        print(bold_underline('Summary:')+'\nTotal reads read: ' + str(counts['read']), file=print_dest)
+        print('Total reads written: ' + str(counts['passed']), file=print_dest)
         for file in counts['bins']:
-            print(file + ': ' + str(counts['bins'][file]), file=print_dest)
+            print('Destination:' + file + '\n', file=print_dest)
 
 
-def write_read(out_files, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table):
+def write_read(out_files, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest):
     '''
     Writes a read in either FASTQ or FASTA format depending if qualities are given
     :param out_file: The file to write to
@@ -185,24 +188,24 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
             fields = get_csv_fields(index_table,header)
         else:
             fields = get_header_fields(header)
-        
-        if read_passes_filters(fields, index_table, filters):
-            counts['passed'] += 1
+        if fields:
+            if read_passes_filters(fields, index_table, filters,print_dest):
+                counts['passed'] += 1
 
-            out_file = get_bin_output_file(fields, bins, out_files)
-            if out_file:
-                if qualities: # FASTQ
-                    read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
-                else:         # FASTA
-                    read_str = ''.join(['>', header, '\n', sequence, '\n'])
+                out_file = get_bin_output_file(fields, bins, out_files)
+                if out_file:
+                    if qualities: # FASTQ
+                        read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
+                    else:         # FASTA
+                        read_str = ''.join(['>', header, '\n', sequence, '\n'])
 
-                out_file.write(read_str)
+                    out_file.write(read_str)
 
-                if not out_file.name in counts['bins']:
-                    counts['bins'][out_file.name] = 0
-                counts['bins'][out_file.name] += 1
+                    if not out_file.name in counts['bins']:
+                        counts['bins'][out_file.name] = 0
+                    counts['bins'][out_file.name] += 1
 
-def read_passes_filters(header_fields,index_table,filters):
+def read_passes_filters(header_fields,index_table,filters,print_dest):
     '''
     Returns true if the read passes all the filters
     :param fields:
@@ -211,8 +214,8 @@ def read_passes_filters(header_fields,index_table,filters):
     '''
     if index_table is not None:
         if filters:
-            filtered_index_table = filter_index_table(index_table, filters)
-            return header_fields["name"] in list(filtered_index_table["read"])
+            filtered_index_table = filter_index_table(index_table, filters, print_dest)
+            return header_fields["name"] in list(filtered_index_table.iloc[:,0]) 
     else:
         for filter in filters:
     
@@ -255,11 +258,17 @@ def get_bin_output_file(fields, bins, out_files):
     return out_files['unbinned']
 
 def get_csv_fields(index_table,header):
+    fields = {}
     name=header.split(' ')[0]
-    row=index_table.query('read=="{}"'.format(name))
-    fields = {'name': name}
-    for i in row:
-        fields[i]=list(row[i])[0]
+    try:
+        row=index_table.query('read_name=="{}"'.format(name))
+        fields = {'name': name}
+        for i in row:
+            fields[i]=list(row[i])[0]
+    except:
+        pass
+
+
     return fields
 
 def get_header_fields(header):
