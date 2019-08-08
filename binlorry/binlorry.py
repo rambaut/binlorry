@@ -115,7 +115,7 @@ def process_files(input_file_or_directory, bins, filters,
     read_files = get_input_files(input_file_or_directory, verbosity, print_dest)
     index_table = None
     if verbosity > 0:
-        print('\n' + bold_underline('Read files found:'), flush=True, file=print_dest)
+        print(bold_underline('\nRead files found:'), flush=True, file=print_dest)
         for read_file in read_files:
             print(read_file, flush=True, file=print_dest)
 
@@ -145,7 +145,7 @@ def process_files(input_file_or_directory, bins, filters,
         print('\n' + bold_underline('Processing read file:'), flush=True, file=print_dest)
 
     for read_file in read_files:
-
+        print(read_file, flush=True, file=print_dest)
         if index_table_file_or_directory:
             index_table=read_files[read_file]
 
@@ -208,6 +208,7 @@ def process_files(input_file_or_directory, bins, filters,
                 print(file + " with corresponding csv report file.", file=print_dest)
             else:
                 print(file, file=print_dest)
+        print("\n", file=print_dest)
 
 
 def write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest,out_report):
