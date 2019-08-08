@@ -60,22 +60,16 @@ def main():
             for index, bin in enumerate(args.bin_by):
                 print((", " if index > 0 else "") + bin, end = '')
             print('\n')
-
-    index_table = None
-
-    if args.index_table_file:
-        index_table = read_index_table(args.index_table_file,args.print_dest)
-
-    process_files(args.input, index_table, args.bin_by, filters,
+    print(args.index_table_file)
+    process_files(args.input, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
                   args.output,
-                  args.verbosity, args.print_dest)
+                  args.verbosity, args.print_dest, args.index_table_file,args.out_report)
 
-def read_index_table(index_table_file,print_dest):
+def read_index_table(index_table_file):
     unfiltered_index_table = pd.read_csv(index_table_file)
-    print(bold_underline('Headers:'), flush=True, file=print_dest)
-    print("\n".join(unfiltered_index_table.columns.values),flush=True, file=print_dest)
-    return unfiltered_index_table
+    headers = unfiltered_index_table.columns.values
+    return unfiltered_index_table, headers
 
 def filter_index_table(unfiltered_index_table, filters,print_dest):
     # For each filter specified in args, filter the pd dataframe to only include the values given. 
@@ -90,8 +84,28 @@ def filter_index_table(unfiltered_index_table, filters,print_dest):
         print(bold_underline("Warning: your filters have produced a dataframe of length 0."),flush=True, file=print_dest)
     return filtered_index_table
 
-def process_files(input_file_or_directory, index_table, bins, filters,
-                  min_length, max_length, output_prefix, verbosity, print_dest):
+def do_read_files_have_report(read_files,report_dict,filters,print_dest):
+    reads_with_reports = {}
+    for read_file in read_files:
+        try:
+            report_file = report_dict[read_file]
+
+            full_index_table,headers = read_index_table(report_file)
+            
+            index_table = filter_index_table(full_index_table, filters, print_dest)
+            reads_with_reports[read_file] = index_table
+        except:
+            print("No corresponding report csv for {}!".format(read_file))
+            continue
+
+    print(bold_underline('\nHeaders:'), flush=True, file=print_dest)
+    print("\n".join(headers),flush=True, file=print_dest)
+
+    return reads_with_reports
+
+
+def process_files(input_file_or_directory, bins, filters,
+                  min_length, max_length, output_prefix, verbosity, print_dest, index_table_file_or_directory,out_report):
     """
     Core function to process one or more input files and create the required output files.
 
@@ -100,7 +114,7 @@ def process_files(input_file_or_directory, index_table, bins, filters,
     """
 
     read_files = get_input_files(input_file_or_directory, verbosity, print_dest)
-
+    index_table = None
     if verbosity > 0:
         print('\n' + bold_underline('Processing reads in:'), flush=True, file=print_dest)
         for read_file in read_files:
@@ -114,9 +128,24 @@ def process_files(input_file_or_directory, index_table, bins, filters,
         'suffix': '.fastq'
     }
 
+    out_reports = None
+    if out_report:
+        out_reports = {
+        'prefix': output_prefix,
+        'suffix': '.csv'
+        }
+
     counts = { 'read': 0, 'passed': 0, 'bins': {} }
 
+    if index_table_file_or_directory:
+
+        report_dict = get_input_reports(read_files,index_table_file_or_directory,verbosity,print_dest)
+        read_files = do_read_files_have_report(read_files,report_dict,filters,print_dest)
+
     for read_file in read_files:
+
+        if index_table_file_or_directory:
+            index_table=read_files[read_file]
 
         file_type = get_sequence_file_type(read_file)
 
@@ -140,14 +169,14 @@ def process_files(input_file_or_directory, index_table, bins, filters,
 
                     if line[0] == '>':  # Header line = start of new read
                         if name:
-                            write_read(out_files, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
+                            write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
                             sequence = ''
                         name = line[1:]
                     else:
                         sequence += line
 
                 if name:
-                    write_read(out_files, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
+                    write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
 
         else: # FASTQ
             with open_func(read_file, 'rt') as in_file:
@@ -157,20 +186,25 @@ def process_files(input_file_or_directory, index_table, bins, filters,
                     next(in_file) # spacer line
                     qualities = next(in_file).strip()
 
-                    write_read(out_files, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table,print_dest)
+                    write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table,print_dest)
 
     for file in out_files:
         if hasattr(file, 'close'):
             file.close()
-    
+
+    if out_reports:
+        for file in out_reports:
+            if hasattr(file, 'close'):
+                file.close()
+            
     if verbosity > 0:
-        print(bold_underline('Summary:')+'\nTotal reads read: ' + str(counts['read']), file=print_dest)
+        print(bold_underline('\nSummary:')+'\nTotal reads read: ' + str(counts['read']), file=print_dest)
         print('Total reads written: ' + str(counts['passed']), file=print_dest)
         for file in counts['bins']:
             print('Destination:' + file + '\n', file=print_dest)
 
 
-def write_read(out_files, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest):
+def write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest):
     '''
     Writes a read in either FASTQ or FASTA format depending if qualities are given
     :param out_file: The file to write to
@@ -193,6 +227,12 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
                 counts['passed'] += 1
 
                 out_file = get_bin_output_file(fields, bins, out_files)
+
+                if index_table is not None and out_reports: 
+                    print(out_reports)
+                    out_report = get_bin_output_file(fields, bins, out_reports)
+                    out_report.write(header + "\n")
+
                 if out_file:
                     if qualities: # FASTQ
                         read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
@@ -200,7 +240,7 @@ def write_read(out_files, filters, bins, min_length, max_length, header, sequenc
                         read_str = ''.join(['>', header, '\n', sequence, '\n'])
 
                     out_file.write(read_str)
-
+                    
                     if not out_file.name in counts['bins']:
                         counts['bins'][out_file.name] = 0
                     counts['bins'][out_file.name] += 1
@@ -292,6 +332,37 @@ def get_header_fields(header):
 
     return fields
 
+
+def get_input_reports(input_files,index_table_file_or_directory,verbosity,print_dest):
+
+    #returns a report dict with read file as key and report file as value (incl. paths)
+    report_dict = {}
+    file_names= {}
+    for i in input_files:
+        file_names[i.split('/')[-1]] = i 
+
+    if len(input_files) == 1:
+        if os.path.isfile(index_table_file_or_directory):
+            report_dict[file_names[0]]=index_table_file_or_directory
+
+    elif len(input_files) > 1:
+        if os.path.isdir(index_table_file_or_directory):
+
+            for r,d,f in os.walk(index_table_file_or_directory):
+                for report_file in f:
+                    
+                    for i in file_names:
+                        if report_file.rstrip(".csv") in i:
+                            report_dict[file_names[i]]= r + '/' + report_file
+
+    if verbosity > 0:
+        print('\n' + bold_underline('Found report files:'), flush=True, file=print_dest)
+        for i in sorted(report_dict):
+            print(report_dict[i], flush=True, file=print_dest)
+
+    return report_dict
+
+
 def get_input_files(input_file_or_directory, verbosity, print_dest):
     '''
     Takes a path to a single file or a directory and returns a list of file paths to be processed.
@@ -300,7 +371,6 @@ def get_input_files(input_file_or_directory, verbosity, print_dest):
     :param print_dest: Where to report (stdout or stderr)
     :return: An array of file paths to process
     '''
-
     input_files = []
 
     if os.path.isfile(input_file_or_directory):
@@ -333,12 +403,14 @@ def get_arguments():
     main_group.add_argument('-i', '--input', required=True,
                             help='FASTA/FASTQ of input reads or a directory which will be '
                                  'recursively searched for FASTQ files (required).')
-    main_group.add_argument('-t', '--index-table', metavar='CSV_FILE', dest='index_table_file',
+    main_group.add_argument('-t', '--index-table', metavar='CSV_FILE', dest='index_table_file', default=None,
                            help='A CSV file with metadata fields for reads (otherwise these are assumed '
-                                'to be in the read headers). This can also include a file and line number to '
-                                'improve performance. Assumes read name is first column of the csv.')
+                                'to be in the read headers), or a directory of csv files that will be recursively '
+                                'searched for names corresponding to a matching input fastq file.')
     main_group.add_argument('-o', '--output', required=True,
                             help='Output filename (or filename prefix)')
+    main_group.add_argument('-r', '--out-report',action='store_true',dest="out_report",
+                            help='Output a report along with fastq.')
     main_group.add_argument('-v', '--verbosity', type=int, default=1,
                             help='Level of output information: 0 = none, 1 = some, 2 = lots')
 
