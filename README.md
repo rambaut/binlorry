@@ -40,18 +40,25 @@ This would read all FASTQ or FASTA files in the directory `reads`, bin by the he
 It would use the file name prefix `barcode` resulting in the files: `barcode_BC01.fastq` and `barcode_BC02.fastq`
 
 ```
-binlorry -i my_file.fastq -t my_file.csv -o filtered --filter-by reference Type_1 -n 550 -x 750
+binlorry -i my_file.fastq -t my_file.csv --out-report -o filtered --filter-by reference Type_1 -n 550 -x 750
 ```
 
 The above example will take in reads from ``my_file.fastq`` and a csv report ``my_file.csv``. Assuming that ``my_file.csv`` has at least the structure shown below, and that the read names in the csv match those in the input read file, BinLorry will filter reads and output only those with Type_1 reference between 550 and 750 bases in length.
 
-| read                                 | reference | 
+| read_name                             | reference | 
 |:--------------------------------------|-----------:| 
 | f66db89e-de96-4fa7-813a-6c5a89586100 | Type_1    | 
 | a39069c5-c493-45f8-9fa8-49eccb5c1807 | Type_1    | 
 | 868efa99-f4c1-4a68-87a9-196a44b997e0 | Type_2    | 
 
 
+```
+binlorry -i path/to/my_fastq_dir -t path/to/my_csv_dir \
+--out-report -o path/to/binned/barcode \
+--filter-by barcode BC01 --bin-by barcode -n 1000 -x 2000
+```
+
+Assuming you have reports in the csv dir corresponding to the read files in the fastq dir, binlorry will recursively search both directories, matching the csv and fastq files based on filename stem. This command will then filter reads only containing BC01 and output a csv report corresponding to the reads presented in the output fastq file.
 
 ## Command line interface
 ```
@@ -69,6 +76,9 @@ Main options:
                            to be in the read headers). This can also include a file and line number to improve performance. Assumes read name is first column of the csv.'
   -o OUTPUT, --output OUTPUT
                           Output filename (or filename prefix)
+  -r REPORT, --out-report REPORT
+                          Output a subsetted csv report along with the fastq. (Default: False)
+                          Only implemented for use in conjunction with -t option.
   -v VERBOSITY, --verbosity VERBOSITY
                           Level of progress information: 0 = none, 1 = some, 2
                           = lots, 3 = full - output will go to stdout if reads
