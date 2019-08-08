@@ -41,7 +41,7 @@ def main():
             filters.append({ 'field': filter_def[0], 'values': values})
 
     if args.verbosity > 0:
-        print(bold_underline("Bins and filters:"),flush=True, file=args.print_dest)
+        print(bold_underline("\nBins and filters:"),flush=True, file=args.print_dest)
         for filter in filters:
             print("Filter reads unless " + filter['field'] + (" is one of: " if len(filter['values']) > 1 else " is "), end = '')
             for index, value in enumerate(filter['values']):
@@ -59,8 +59,7 @@ def main():
             print("Bin reads by ", end = '')
             for index, bin in enumerate(args.bin_by):
                 print((", " if index > 0 else "") + bin, end = '')
-            print('\n')
-    print(args.index_table_file)
+
     process_files(args.input, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
                   args.output,
@@ -116,7 +115,7 @@ def process_files(input_file_or_directory, bins, filters,
     read_files = get_input_files(input_file_or_directory, verbosity, print_dest)
     index_table = None
     if verbosity > 0:
-        print('\n' + bold_underline('Processing reads in:'), flush=True, file=print_dest)
+        print('\n' + bold_underline('Read files found:'), flush=True, file=print_dest)
         for read_file in read_files:
             print(read_file, flush=True, file=print_dest)
 
@@ -141,6 +140,9 @@ def process_files(input_file_or_directory, bins, filters,
 
         report_dict = get_input_reports(read_files,index_table_file_or_directory,verbosity,print_dest)
         read_files = do_read_files_have_report(read_files,report_dict,filters,print_dest)
+
+    if verbosity > 0:
+        print('\n' + bold_underline('Processing read file:'), flush=True, file=print_dest)
 
     for read_file in read_files:
 
@@ -169,14 +171,14 @@ def process_files(input_file_or_directory, bins, filters,
 
                     if line[0] == '>':  # Header line = start of new read
                         if name:
-                            write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
+                            write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest,out_report)
                             sequence = ''
                         name = line[1:]
                     else:
                         sequence += line
 
                 if name:
-                    write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest)
+                    write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest,out_report)
 
         else: # FASTQ
             with open_func(read_file, 'rt') as in_file:
@@ -186,7 +188,7 @@ def process_files(input_file_or_directory, bins, filters,
                     next(in_file) # spacer line
                     qualities = next(in_file).strip()
 
-                    write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table,print_dest)
+                    write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table,print_dest,out_report)
 
     for file in out_files:
         if hasattr(file, 'close'):
@@ -200,11 +202,15 @@ def process_files(input_file_or_directory, bins, filters,
     if verbosity > 0:
         print(bold_underline('\nSummary:')+'\nTotal reads read: ' + str(counts['read']), file=print_dest)
         print('Total reads written: ' + str(counts['passed']), file=print_dest)
+        print(bold_underline('\nRead files written:'), file=print_dest)
         for file in counts['bins']:
-            print('Destination:' + file + '\n', file=print_dest)
+            if out_report:
+                print(file + " with corresponding csv report file.", file=print_dest)
+            else:
+                print(file, file=print_dest)
 
 
-def write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest):
+def write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest,out_report):
     '''
     Writes a read in either FASTQ or FASTA format depending if qualities are given
     :param out_file: The file to write to
@@ -225,13 +231,15 @@ def write_read(out_files, out_reports, filters, bins, min_length, max_length, he
         if fields:
             if read_passes_filters(fields, index_table, filters,print_dest):
                 counts['passed'] += 1
-
-                out_file = get_bin_output_file(fields, bins, out_files)
+                col_names = ''
+                out_file = get_bin_output_file(fields, bins, out_files,col_names,out_report)
 
                 if index_table is not None and out_reports: 
-                    print(out_reports)
-                    out_report = get_bin_output_file(fields, bins, out_reports)
-                    out_report.write(header + "\n")
+                    col_names = ",".join(list(index_table.columns.values))
+                    out_report = get_bin_output_file(fields, bins, out_reports,col_names,out_report)
+                    row = index_table.loc[index_table["read_name"] == fields["read_name"]].values
+                    row_str = ",".join([str(i) for i in list(row[0])])
+                    out_report.write(row_str + "\n")
 
                 if out_file:
                     if qualities: # FASTQ
@@ -268,7 +276,8 @@ def read_passes_filters(header_fields,index_table,filters,print_dest):
     return True
 
 
-def get_bin_output_file(fields, bins, out_files):
+
+def get_bin_output_file(fields, bins, out_files, header, out_report):
     '''
     This function decides which file to send this read to based on the current bins and filters. If
     the read's fields do not pass the filters then None is returned. Otherwise the file that is associated
@@ -289,12 +298,14 @@ def get_bin_output_file(fields, bins, out_files):
         if len(bin_name) > 0:
             if not bin_name in out_files:
                 out_files[bin_name] = open(out_files['prefix'] + bin_name + out_files['suffix'], "wt")
-
+                if out_report:
+                    out_files[bin_name].write(header +'\n')
             return out_files[bin_name]
 
     if not 'unbinned' in out_files:
         out_files['unbinned'] = open(out_files['prefix'] + out_files['suffix'], "wt")
-
+        if out_report:
+            out_files["unbinned"].write(header +'\n')
     return out_files['unbinned']
 
 def get_csv_fields(index_table,header):
@@ -356,7 +367,7 @@ def get_input_reports(input_files,index_table_file_or_directory,verbosity,print_
                             report_dict[file_names[i]]= r + '/' + report_file
 
     if verbosity > 0:
-        print('\n' + bold_underline('Found report files:'), flush=True, file=print_dest)
+        print('\n' + bold_underline('Report files found:'), flush=True, file=print_dest)
         for i in sorted(report_dict):
             print(report_dict[i], flush=True, file=print_dest)
 
