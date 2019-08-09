@@ -233,11 +233,11 @@ def write_read(out_files, out_reports, filters, bins, min_length, max_length, he
             if read_passes_filters(fields, index_table, filters,print_dest):
                 counts['passed'] += 1
                 col_names = ''
-                out_file = get_bin_output_file(fields, bins, out_files,col_names,out_report)
+                out_file = get_bin_output_file(fields, bins, out_files, col_names, False)
 
                 if index_table is not None and out_reports: 
                     col_names = ",".join(list(index_table.columns.values))
-                    out_report = get_bin_output_file(fields, bins, out_reports,col_names,out_report)
+                    out_report = get_bin_output_file(fields, bins, out_reports, col_names, True)
                     row = index_table.loc[index_table["read_name"] == fields["read_name"]].values
                     row_str = ",".join([str(i) for i in list(row[0])])
                     out_report.write(row_str + "\n")
@@ -278,7 +278,7 @@ def read_passes_filters(header_fields,index_table,filters,print_dest):
 
 
 
-def get_bin_output_file(fields, bins, out_files, header, out_report):
+def get_bin_output_file(fields, bins, out_files, header, report):
     '''
     This function decides which file to send this read to based on the current bins and filters. If
     the read's fields do not pass the filters then None is returned. Otherwise the file that is associated
@@ -299,13 +299,13 @@ def get_bin_output_file(fields, bins, out_files, header, out_report):
         if len(bin_name) > 0:
             if not bin_name in out_files:
                 out_files[bin_name] = open(out_files['prefix'] + bin_name + out_files['suffix'], "wt")
-                if out_report:
+                if report:
                     out_files[bin_name].write(header +'\n')
             return out_files[bin_name]
 
     if not 'unbinned' in out_files:
         out_files['unbinned'] = open(out_files['prefix'] + out_files['suffix'], "wt")
-        if out_report:
+        if report:
             out_files["unbinned"].write(header +'\n')
     return out_files['unbinned']
 
