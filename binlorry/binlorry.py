@@ -364,7 +364,8 @@ def get_input_reports(input_files,index_table_file_or_directory,verbosity,print_
                 for report_file in f:
                     
                     for i in file_names:
-                        if report_file.rstrip(".csv") in i:
+                        file_stem = i.split('/')[-1].rstrip(".fastq").rstrip(".fasta")
+                        if report_file.rstrip(".csv") == file_stem:
                             report_dict[file_names[i]]= r + '/' + report_file
 
     if verbosity > 0:
