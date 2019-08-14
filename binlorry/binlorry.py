@@ -59,6 +59,28 @@ def main():
             print("Bin reads by ", end = '')
             for index, bin in enumerate(args.bin_by):
                 print((", " if index > 0 else "") + bin, end = '')
+            print("")
+
+    if args.force_output:
+        if len(args.bin_by) > 1:
+            print(bold_underline("\nWarning: --force_output only works on a single bin/filter factor."))
+            print(bold_underline("Usage: --force_output requires --bin_by to have matching --filter_by."))
+        else:
+            for filter in filters:
+                for bin in args.bin_by:
+                    if filter["field"]==bin:
+                        print(bold_underline("\nForcing file creation of: "))
+                        for value in filter["values"]:
+                            filename= args.output + "_" + value + ".fastq"
+                            with open(filename,"w"):
+                                print(filename)
+                            if args.out_report:
+                                reportname=filename.rstrip("fastq")+("csv")
+                                with open(reportname,"w"):
+                                    print(reportname)
+
+                    
+
 
     process_files(args.input, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
@@ -424,6 +446,8 @@ def get_arguments():
                             help='Output filename (or filename prefix)')
     main_group.add_argument('-r', '--out-report',action='store_true',dest="out_report",
                             help='Output a report along with fastq.')
+    main_group.add_argument('-f', '--force-output',action='store_true',dest="force_output",
+                            help='Output binned/ filtered files even if empty.')
     main_group.add_argument('-v', '--verbosity', type=int, default=1,
                             help='Level of output information: 0 = none, 1 = some, 2 = lots')
 
@@ -433,7 +457,7 @@ def get_arguments():
                                  'will be nested in order specified. e.g. `--bin-by barcode reference`')
     bin_group.add_argument('--filter-by', metavar='FILTER', action='append', nargs='+', dest='filter_by',
                             help='Specify header field and accepted values to filter the reads by. Multiple '
-                                 'instances of this option can be specified. e.g. `--filter-by reference BC01 '
+                                 'instances of this option can be specified. e.g. `--filter-by barcode BC01 '
                                  '--filter-by genotype Type1`')
     bin_group.add_argument('-n', '--min-length', metavar='MIN', type=int, dest='min_length',
                            help='Filter the reads by their length, specifying the minimum length.')

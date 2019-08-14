@@ -79,6 +79,9 @@ Main options:
   -r REPORT, --out-report REPORT
                           Output a subsetted csv report along with the fastq. (Default: False)
                           Only implemented for use in conjunction with -t option.
+  -f FORCE_OUTFILES, --force-output FORCE_OUTFILES
+                          Output binned/ filtered files even if empty. (default: False)
+                          Usage: only a single binning factor with a corresponding filter factor.
   -v VERBOSITY, --verbosity VERBOSITY
                           Level of progress information: 0 = none, 1 = some, 2
                           = lots, 3 = full - output will go to stdout if reads
