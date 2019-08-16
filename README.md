@@ -1,9 +1,21 @@
 # BinLorry
 
-BinLorry is a flexible tool for binning and filtering sequencing reads into distinct files. Reads can be binned and filtered by any
-attributes encoded in their headers, documented in a CSV file or by length.
+BinLorry is a flexible tool for binning and filtering sequencing reads into distinct files. Reads can be binned and filtered by any attributes encoded in their headers, documented in a CSV file or by length.
 
 ## Installing
+
+Simply install with pip:
+
+```
+pip3 install binlorry
+```
+
+Run:
+```
+binlorry --help
+```
+
+### Install from repository
 
 Clone the repository:
 ```
@@ -13,11 +25,6 @@ git clone https://github.com/rambaut/binlorry.git
 Install:
 ```
 pip3 install ./binlorry
-```
-
-Run:
-```
-binlorry --help
 ```
 
 ### Run without installation
