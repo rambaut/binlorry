@@ -95,14 +95,11 @@ def read_index_table(index_table_file):
 def filter_index_table(unfiltered_index_table, filters,print_dest):
     # For each filter specified in args, filter the pd dataframe to only include the values given. 
     # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
-
     for filter in filters:
         try:
             filtered_index_table = unfiltered_index_table.loc[(unfiltered_index_table[filter["field"]].isin(filter["values"]))] 
         except:
             print("Check if csv has '{}' column.".format(filter["field"]))
-    if len(filtered_index_table)==0:
-        print(bold_underline("Warning: your filters have produced a dataframe of length 0."),flush=True, file=print_dest)
     return filtered_index_table
 
 def do_read_files_have_report(read_files,report_dict,filters,print_dest):
@@ -184,7 +181,7 @@ def process_files(input_file_or_directory, bins, filters,
 
                 name = ''
                 sequence = ''
-
+                
                 for line in in_file:
                     line = line.strip()
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run 'python3 setup.py install' to install Binlorry.
+Run 'pip install .' to install Binlorry.
 """
 
 # Make sure this is being run with Python 3.4 or later.
@@ -97,8 +97,9 @@ setup(name='binlorry',
       version=__version__,
       description='BinLorry: a flexible tool for binning and filtering sequencing reads',
       long_description=LONG_DESCRIPTION,
+      long_description_content_type="text/markdown",
       url='http://github.com/rambaut/binlorry',
-      author='Andrew Rambaut',
+      author='Andrew Rambaut and Aine O Toole',
       author_email='a.rambaut@ed.ac.uk',
       license='GPL',
       packages=['binlorry'],
