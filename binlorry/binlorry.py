@@ -60,6 +60,9 @@ def main():
             for index, bin in enumerate(args.bin_by):
                 print((", " if index > 0 else "") + bin, end = '')
             print("")
+         
+        if args.header_delimiters:
+            print("Header delimiters ", args.header_delimiters) 
 
     if args.force_output:
         if len(args.bin_by) > 1:
@@ -84,6 +87,7 @@ def main():
 
     process_files(args.input, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
+                  getattr(args, 'header_delimiters', "="),
                   args.output,
                   args.verbosity, args.print_dest, args.index_table_file,args.out_report)
 
@@ -123,7 +127,7 @@ def do_read_files_have_report(read_files,report_dict,filters,print_dest):
 
 
 def process_files(input_file_or_directory, bins, filters,
-                  min_length, max_length, output_prefix, verbosity, print_dest, index_table_file_or_directory,out_report):
+                  min_length, max_length, header_delimiters, output_prefix, verbosity, print_dest, index_table_file_or_directory,out_report):
     """
     Core function to process one or more input files and create the required output files.
 
@@ -190,14 +194,14 @@ def process_files(input_file_or_directory, bins, filters,
 
                     if line[0] == '>':  # Header line = start of new read
                         if name:
-                            write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest,out_report)
+                            write_read(out_files, out_reports, filters, bins, min_length, max_length, header_delimiters, name, sequence, None, counts,index_table,print_dest,out_report)
                             sequence = ''
                         name = line[1:]
                     else:
                         sequence += line
 
                 if name:
-                    write_read(out_files, out_reports, filters, bins, min_length, max_length, name, sequence, None, counts,index_table,print_dest,out_report)
+                    write_read(out_files, out_reports, filters, bins, min_length, max_length, header_delimiters, name, sequence, None, counts,index_table,print_dest,out_report)
 
         else: # FASTQ
             with open_func(read_file, 'rt') as in_file:
@@ -207,7 +211,7 @@ def process_files(input_file_or_directory, bins, filters,
                     next(in_file) # spacer line
                     qualities = next(in_file).strip()
 
-                    write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts,index_table,print_dest,out_report)
+                    write_read(out_files, out_reports, filters, bins, min_length, max_length, header_delimiters, header, sequence, qualities, counts,index_table,print_dest,out_report)
 
     for file in out_files:
         if hasattr(file, 'close'):
@@ -230,7 +234,7 @@ def process_files(input_file_or_directory, bins, filters,
         print("\n", file=print_dest)
 
 
-def write_read(out_files, out_reports, filters, bins, min_length, max_length, header, sequence, qualities, counts, index_table,print_dest,out_report):
+def write_read(out_files, out_reports, filters, bins, min_length, max_length, header_delimiters, header, sequence, qualities, counts, index_table,print_dest,out_report):
     '''
     Writes a read in either FASTQ or FASTA format depending if qualities are given
     :param out_file: The file to write to
@@ -247,7 +251,7 @@ def write_read(out_files, out_reports, filters, bins, min_length, max_length, he
         if index_table is not None:
             fields = get_csv_fields(index_table,header)
         else:
-            fields = get_header_fields(header)
+            fields = get_header_fields(header, header_delimiters)
         if fields:
             if read_passes_filters(fields, index_table, filters,print_dest):
                 counts['passed'] += 1
@@ -342,7 +346,7 @@ def get_csv_fields(index_table,header):
 
     return fields
 
-def get_header_fields(header):
+def get_header_fields(header, header_delimiters):
     '''
     Splits a FASTA/FASTQ header line into key=value fields and returns them as
     an object.
@@ -355,11 +359,12 @@ def get_header_fields(header):
     fields = { 'name': parts[0] }
 
     for part in parts[1:]:
-        try:
-            (key, value) = part.split('=')
-            fields[key] = value
-        except:
-            pass
+        for delimiter in header_delimiters:
+            try:
+                (key, value) = part.split(delimiter)
+                fields[key] = value
+            except:
+                pass
 
     return fields
 
@@ -460,6 +465,9 @@ def get_arguments():
                            help='Filter the reads by their length, specifying the minimum length.')
     bin_group.add_argument('-x', '--max-length', metavar='MAX', type=int, dest='max_length',
                            help='Filter the reads by their length, specifying the maximum length.')
+    bin_group.add_argument('-d', '--header_delimiters', metavar='DELIM', dest='header_delimiters',
+                           help='Delimiters to use when searching for key:value pairs in FASTA/FASTQ header.')
+
 
     help_args = parser.add_argument_group('Help')
     help_args.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
