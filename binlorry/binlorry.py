@@ -465,7 +465,7 @@ def get_arguments():
                            help='Filter the reads by their length, specifying the minimum length.')
     bin_group.add_argument('-x', '--max-length', metavar='MAX', type=int, dest='max_length',
                            help='Filter the reads by their length, specifying the maximum length.')
-    bin_group.add_argument('-d', '--header_delimiters', metavar='DELIM', dest='header_delimiters',
+    bin_group.add_argument('-d', '--header-delimiters', metavar='DELIM', dest='header_delimiters', default="=",
                            help='Delimiters to use when searching for key:value pairs in FASTA/FASTQ header.')
 
 
