@@ -82,9 +82,6 @@ def main():
                                 with open(reportname,"w"):
                                     print(reportname)
 
-
-
-
     process_files(args.input, args.bin_by, filters,
                   getattr(args, 'min_length', 0), getattr(args, 'max_length', 1E10),
                   getattr(args, 'header_delimiters', "="),
@@ -96,7 +93,7 @@ def read_index_table(index_table_file):
     headers = unfiltered_index_table.columns.values
     return unfiltered_index_table, headers
 
-def filter_index_table(unfiltered_index_table, filters,print_dest):
+def filter_index_table(unfiltered_index_table, filters, print_dest):
     # For each filter specified in args, filter the pd dataframe to only include the values given. 
     # In case of key error (i.e. filter in cmd line arg not present as a header in the csv) print informative error.
     for filter in filters:
@@ -137,6 +134,7 @@ def process_files(input_file_or_directory, bins, filters,
 
     read_files = get_input_files(input_file_or_directory, verbosity, print_dest)
     index_table = None
+
     if verbosity > 0:
         print(bold_underline('\nRead files found:'), flush=True, file=print_dest)
         for read_file in read_files:
@@ -163,18 +161,16 @@ def process_files(input_file_or_directory, bins, filters,
 
         report_dict = get_input_reports(read_files,index_table_file_or_directory,verbosity,print_dest)
         read_files = do_read_files_have_report(read_files,report_dict,filters,print_dest)
-
+        #structure of this is: read_files[filename]=corresponding_filtered_index_table
     if verbosity > 0:
         print('\n' + bold_underline('Processing read file:'), flush=True, file=print_dest)
 
     for read_file in read_files:
         print(read_file, flush=True, file=print_dest)
-        if index_table_file_or_directory:
-            index_table=read_files[read_file]
+        filtered_index_table = None
 
-            filtered_index_table = None
-            if filters:
-                filtered_index_table = filter_index_table(index_table, filters, print_dest)
+        if index_table_file_or_directory:
+            filtered_index_table=read_files[read_file]
 
         file_type = get_sequence_file_type(read_file)
 
