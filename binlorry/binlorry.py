@@ -246,7 +246,7 @@ def get_input_reports(input_files, data_path, verbosity, print_dest):
 
 
 def read_data_table(data_path, filters, print_dest):
-    sys.exit('Unordered data files not implemented yet')
+    sys.exit('Unordered data files not implemented yet.')
 
     ### TODO implement reading of data tables into a dictionary keyed by read name
     data_table = {}
