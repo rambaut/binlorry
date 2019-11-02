@@ -283,10 +283,13 @@ def process_read_file(read_file, report_file, data_table,
     else:  # plain text
         open_func = open
 
+    report_fields = None
+
     with open_func(read_file, 'rt') as in_file:
         in_data = None
         if report_file:
             in_data = open(report_file, 'rt')
+            report_fields = get_data_fields(in_data)
 
         if file_type == 'FASTA':
             # For FASTA files we need to deal with line wrapped sequences...
@@ -302,7 +305,7 @@ def process_read_file(read_file, report_file, data_table,
 
                 if line[0] == '>':  # Header line = start of new read
                     if header:
-                        data = get_read_data(header, header_delimiters, in_data, data_table)
+                        data = get_read_data(header, header_delimiters, report_fields, in_data, data_table)
                         filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
                         sequence = ''
                     header = line[1:]
@@ -310,7 +313,7 @@ def process_read_file(read_file, report_file, data_table,
                     sequence += line
 
             if header:
-                data = get_read_data(header, header_delimiters, in_data, data_table)
+                data = get_read_data(header, header_delimiters, report_fields, in_data, data_table)
                 filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
 
         else: # FASTQ
@@ -321,7 +324,7 @@ def process_read_file(read_file, report_file, data_table,
                     next(in_file) # spacer line
                     qualities = next(in_file).strip()
 
-                    data = get_read_data(header, header_delimiters, in_data, data_table)
+                    data = get_read_data(header, header_delimiters, report_fields, in_data, data_table)
                     filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, qualities, counts, print_dest)
 
         in_file.close()
@@ -332,33 +335,52 @@ def process_read_file(read_file, report_file, data_table,
                 file.close()
 
 
-def get_read_data(header, header_delimiters, in_data, report_fields, data_table):
+def get_data_fields(in_data):
+
+    for line in in_data:
+        line = line.strip()
+
+        if not line:
+            continue
+
+        return line.split(',')
+
+
+
+def get_read_data(header, header_delimiters, report_fields, in_data, data_table):
 
     name = header.split(' ')[0]
 
     if data_table:
-        data = data_table[name]
+        return data_table[name]
 
     elif in_data:
-        line = None
         for line in in_data:
             line = line.strip()
             if not line:
                 continue
             else:
-                break
-
-        data = get_report_data(name, line, report_fields)
+                return get_report_data(in_data, name, line, report_fields)
 
     else:
-        data = get_header_data(header, header_delimiters)
+        return get_header_data(header, header_delimiters)
+
+
+def get_report_data(file, name, line, report_fields):
+    data = {}
+    values = line.split(',')
+
+    if len(values) != len(report_fields):
+        sys.exit('input report file, ' + file.name + ', line ' + file.fileno() + ', has the wrong number of fields')
+
+    if values[0] != name:
+        sys.exit("input report file, " + file.name + ", line " + file.fileno() +
+                 ", the first column doesn't match the name of the read")
+
+    for i in range(len(values)):
+        data[report_fields[i]] = values[i]
 
     return data
-
-
-def get_report_data(name, line, report_fields):
-    pass
-
 
 def filter_bin_read(out_files, out_reports, filters, bins, min_length, max_length, data, header, sequence, qualities, counts, print_dest):
     '''
