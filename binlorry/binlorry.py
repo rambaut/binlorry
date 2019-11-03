@@ -285,6 +285,8 @@ def process_read_file(read_file, report_file, data_table,
 
     report_fields = None
 
+    line_number = 0
+
     with open_func(read_file, 'rt') as in_file:
         in_data = None
         if report_file:
@@ -305,7 +307,8 @@ def process_read_file(read_file, report_file, data_table,
 
                 if line[0] == '>':  # Header line = start of new read
                     if header:
-                        data = get_read_data(header, header_delimiters, report_fields, in_data, data_table)
+                        line_number += 1
+                        data = get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number)
                         filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
                         sequence = ''
                     header = line[1:]
@@ -313,7 +316,8 @@ def process_read_file(read_file, report_file, data_table,
                     sequence += line
 
             if header:
-                data = get_read_data(header, header_delimiters, report_fields, in_data, data_table)
+                line_number += 1
+                data = get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number)
                 filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
 
         else: # FASTQ
@@ -324,7 +328,8 @@ def process_read_file(read_file, report_file, data_table,
                     next(in_file) # spacer line
                     qualities = next(in_file).strip()
 
-                    data = get_read_data(header, header_delimiters, report_fields, in_data, data_table)
+                    line_number += 1
+                    data = get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number)
                     filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, qualities, counts, print_dest)
 
         in_file.close()
@@ -346,8 +351,7 @@ def get_data_fields(in_data):
         return line.split(',')
 
 
-
-def get_read_data(header, header_delimiters, report_fields, in_data, data_table):
+def get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number):
 
     name = header.split(' ')[0]
 
@@ -360,21 +364,21 @@ def get_read_data(header, header_delimiters, report_fields, in_data, data_table)
             if not line:
                 continue
             else:
-                return get_report_data(in_data, name, line, report_fields)
+                return get_report_data(in_data, line_number, name, line, report_fields)
 
     else:
         return get_header_data(header, header_delimiters)
 
 
-def get_report_data(file, name, line, report_fields):
+def get_report_data(file, line_number, name, line, report_fields):
     data = {}
     values = line.split(',')
 
     if len(values) != len(report_fields):
-        sys.exit('input report file, ' + file.name + ', line ' + file.fileno() + ', has the wrong number of fields')
+        sys.exit('input report file, ' + file.name + ', line ' + str(line_number + 1) + ', has the wrong number of fields')
 
     if values[0] != name:
-        sys.exit("input report file, " + file.name + ", line " + file.fileno() +
+        sys.exit("input report file, " + file.name + ", line " + str(line_number + 1) +
                  ", the first column doesn't match the name of the read")
 
     for i in range(len(values)):
@@ -413,12 +417,7 @@ def filter_bin_read(out_files, out_reports, filters, bins, min_length, max_lengt
             # out_report.write(row_str + "\n")
 
             if out_file:
-                if qualities: # FASTQ
-                    read_str = ''.join(['@', header, '\n', sequence, '\n+\n', qualities, '\n'])
-                else:         # FASTA
-                    read_str = ''.join(['>', header, '\n', sequence, '\n'])
-
-                out_file.write(read_str)
+                write_read(out_file, header, sequence, qualities)
 
                 if not out_file.name in counts['bins']:
                     counts['bins'][out_file.name] = 0
