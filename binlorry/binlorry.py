@@ -83,9 +83,9 @@ def main():
 #             print("Check if csv has '{}' column.".format(filter["field"]))
 #     return filtered_index_table
 
-def process_files(input_path, data_path, unordered_data,
+def process_files(input_path, input_report_path, unordered_data,
                   bins, filters, min_length, max_length, header_delimiters, output_prefix,
-                  force_output, verbosity, print_dest, out_report):
+                  force_output, verbosity, print_dest, create_output_report):
     """
     Core function to process one or more input files and create the required output files.
 
@@ -109,7 +109,7 @@ def process_files(input_path, data_path, unordered_data,
     }
 
     output_reports = None
-    if out_report:
+    if create_output_report:
         output_reports = {
             'prefix': output_prefix,
             'suffix': '.csv'
@@ -130,22 +130,22 @@ def process_files(input_path, data_path, unordered_data,
                                 print(filename)
                                 output_files[bin] = filename
 
-                            if out_report:
-                                reportname = filename.rstrip("fastq")+("csv")
-                                with open(reportname, "w"):
-                                    print(reportname)
-                                    output_reports[bin] = reportname
+                            if create_output_report:
+                                report_name = filename.rstrip("fastq")+("csv")
+                                with open(report_name, "w"):
+                                    print(report_name)
+                                    output_reports[bin] = report_name
 
     counts = { 'read': 0, 'passed': 0, 'bins': {} }
 
     report_dict = {}
-    if data_path:
-        report_dict = get_input_reports(read_files, data_path, verbosity, print_dest)
+    if input_report_path:
+        report_dict = get_input_reports(read_files, input_report_path, verbosity, print_dest)
 
     # if '--unordered_data' is set then all the data tables should be loaded to be accessed as needed
     data_table = None
     if unordered_data:
-        data_table = read_data_table(data_path, verbosity, print_dest)
+        data_table = read_data_table(input_report_path, verbosity, print_dest)
 
     if verbosity > 0:
         print('\n' + bold_underline('Processing read file:'), flush=True, file=print_dest)
@@ -174,7 +174,7 @@ def process_files(input_path, data_path, unordered_data,
         print('Total reads written: ' + str(counts['passed']), file=print_dest)
         print(bold_underline('\nRead files written:'), file=print_dest)
         for file in counts['bins']:
-            if out_report:
+            if output_reports:
                 print(file + " with corresponding csv report file.", file=print_dest)
             else:
                 print(file, file=print_dest)
@@ -210,11 +210,11 @@ def get_input_files(input_path, verbosity, print_dest):
     return input_files
 
 
-def get_input_reports(input_files, data_path, verbosity, print_dest):
+def get_input_reports(input_files, input_report_path, verbosity, print_dest):
     '''
     returns a report dict with read file as key and report file as value (incl. paths).
     :param input_files: The array of input files
-    :param data_path: The path to the report files
+    :param input_report_path: The path to the report files
     :param verbosity: Verbosity level to report
     :param print_dest: Where to report (stdout or stderr)
     :return: An dictionary of report files
@@ -225,13 +225,13 @@ def get_input_reports(input_files, data_path, verbosity, print_dest):
         file_names[i.split('/')[-1]] = i
 
     if len(input_files) == 1:
-        if os.path.isfile(data_path):
-            report_dict[file_names[0]] = data_path
+        if os.path.isfile(input_report_path):
+            report_dict[file_names[0]] = input_report_path
 
     elif len(input_files) > 1:
-        if os.path.isdir(data_path):
+        if os.path.isdir(input_report_path):
 
-            for r,d,f in os.walk(data_path):
+            for r,d,f in os.walk(input_report_path):
                 for report_file in f:
 
                     for i in file_names:
@@ -304,10 +304,16 @@ def process_read_file(read_file, report_file, data_table,
     line_number = 0
 
     with open_func(read_file, 'rt') as in_file:
-        in_data = None
+        in_report = None
         if report_file:
-            in_data = open(report_file, 'rt')
-            report_fields = get_data_fields(in_data)
+            in_report = open(report_file, 'rt')
+            report_fields = get_report_fields(in_report)
+
+            if 'fields' in output_reports:
+                # todo check that the fields are the same
+                pass
+            else:
+                output_reports['fields'] = report_fields
 
         if file_type == 'FASTA':
             # For FASTA files we need to deal with line wrapped sequences...
@@ -324,7 +330,7 @@ def process_read_file(read_file, report_file, data_table,
                 if line[0] == '>':  # Header line = start of new read
                     if header:
                         line_number += 1
-                        data = get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number)
+                        data = get_read_data(header, header_delimiters, report_fields, in_report, data_table, line_number)
                         filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
                         sequence = ''
                     header = line[1:]
@@ -333,7 +339,7 @@ def process_read_file(read_file, report_file, data_table,
 
             if header:
                 line_number += 1
-                data = get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number)
+                data = get_read_data(header, header_delimiters, report_fields, in_report, data_table, line_number)
                 filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
 
         else: # FASTQ
@@ -344,7 +350,7 @@ def process_read_file(read_file, report_file, data_table,
                 qualities = next(in_file).strip()
 
                 line_number += 1
-                data, name = get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number)
+                data, name = get_read_data(header, header_delimiters, report_fields, in_report, data_table, line_number)
                 filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, qualities, counts, print_dest)
 
         in_file.close()
@@ -355,7 +361,7 @@ def process_read_file(read_file, report_file, data_table,
                 file.close()
 
 
-def get_data_fields(in_data):
+def get_report_fields(in_data):
 
     for line in in_data:
         line = line.strip()
@@ -402,7 +408,7 @@ def get_report_data(file, line, line_number, name, report_fields):
     return data, values[0]
 
 
-def filter_bin_read(out_files, out_reports, filters, bins, min_length, max_length, data,
+def filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data,
                     header, sequence, qualities, counts, print_dest):
     '''
     Writes a read in either FASTQ or FASTA format depending if qualities are given
@@ -421,9 +427,11 @@ def filter_bin_read(out_files, out_reports, filters, bins, min_length, max_lengt
 
         if passed:
             counts['passed'] += 1
-            out_file = get_bin_output_file(data, bins, out_files, None, False)
+            out_file = get_bin_output_file(data, bins, output_files, False)
 
-            if out_reports:
+            out_report = None
+            if output_reports:
+                out_report = get_bin_output_file(data, bins, output_reports, True)
                 pass
             # todo - create output reports
             # col_names = ",".join(list(filtered_index_table.columns.values))
@@ -435,6 +443,9 @@ def filter_bin_read(out_files, out_reports, filters, bins, min_length, max_lengt
 
             if out_file:
                 write_read(out_file, header, sequence, qualities)
+
+                if out_report:
+                    out_report.write(",".join(data.values()) + "\n")
 
                 if not out_file.name in counts['bins']:
                     counts['bins'][out_file.name] = 0
@@ -476,7 +487,7 @@ def read_passes_filters(header_fields, filters):
     return True
 
 
-def get_bin_output_file(fields, bins, out_files, header, report):
+def  get_bin_output_file(fields, bins, output_files, report):
     '''
     This function decides which file to send this read to based on the current bins and filters. If
     the read's fields do not pass the filters then None is returned. Otherwise the file that is associated
@@ -495,17 +506,17 @@ def get_bin_output_file(fields, bins, out_files, header, report):
                 bin_name += "_" + fields[bin]
 
         if len(bin_name) > 0:
-            if not bin_name in out_files:
-                out_files[bin_name] = open(out_files['prefix'] + bin_name + out_files['suffix'], "wt")
+            if not bin_name in output_files:
+                output_files[bin_name] = open(output_files['prefix'] + bin_name + output_files['suffix'], "wt")
                 if report:
-                    out_files[bin_name].write(header +'\n')
-            return out_files[bin_name]
+                    output_files[bin_name].write(",".join(output_files['fields']) +'\n')
+            return output_files[bin_name]
 
-    if not 'unbinned' in out_files:
-        out_files['unbinned'] = open(out_files['prefix'] + out_files['suffix'], "wt")
+    if not 'unbinned' in output_files:
+        output_files['unbinned'] = open(output_files['prefix'] + output_files['suffix'], "wt")
         if report:
-            out_files["unbinned"].write(header +'\n')
-    return out_files['unbinned']
+            output_files["unbinned"].write(",".join(output_files['fields']) +'\n')
+    return output_files['unbinned']
 
 
 def get_csv_fields(index_table,header):
