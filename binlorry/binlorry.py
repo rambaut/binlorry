@@ -373,8 +373,8 @@ def read_data_table(data_path, data_table):
     # get the field names for the existing data_table
     fields = get_report_fields(data_table)
 
-    with open(data_path, 'rb') as csvfile:
-        new_data_table = csv.reader(csvfile)
+    with open(data_path, 'rt') as csvfile:
+        new_data_table = csv.DictReader(csvfile)
 
         line_number = 0
 
@@ -396,6 +396,8 @@ def read_data_table(data_path, data_table):
             # add the data to the existing data table
             data_table[read_name] = row
 
+            line_number += 1
+            
     # print(bold_underline('\nHeaders:'), flush=True, file=print_dest)
     # print("\n".join(headers),flush=True, file=print_dest)
 
