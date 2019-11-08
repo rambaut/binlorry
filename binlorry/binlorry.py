@@ -15,11 +15,12 @@ not, see <http://www.gnu.org/licenses/>.
 """
 
 import argparse
+import csv
 import gzip
 import os
 import sys
 
-from .misc import bold_underline, MyHelpFormatter, get_sequence_file_type, get_compression_type
+from .misc import bold_underline, MyHelpFormatter, get_sequence_file_type, get_compression_type, get_file_stem
 from .version import __version__
 
 
@@ -138,14 +139,18 @@ def process_files(input_path, input_report_path, unordered_data,
 
     counts = { 'read': 0, 'passed': 0, 'bins': {} }
 
-    report_dict = {}
-    if input_report_path:
-        report_dict = get_input_reports(read_files, input_report_path, verbosity, print_dest)
-
-    # if '--unordered_data' is set then all the data tables should be loaded to be accessed as needed
+    report_dict = None
     data_table = None
-    if unordered_data:
-        data_table = read_data_table(input_report_path, verbosity, print_dest)
+
+    if input_report_path:
+        report_dict = get_input_reports(input_report_path, verbosity, print_dest)
+
+        # if '--unordered_data' is set then all the data tables should be loaded to be accessed as needed
+        if unordered_data:
+            data_table = {}
+            for key in report_dict:
+                data_table = read_data_table(report_dict[key], data_table)
+
 
     if verbosity > 0:
         print('\n' + bold_underline('Processing read file:'), flush=True, file=print_dest)
@@ -153,9 +158,18 @@ def process_files(input_path, input_report_path, unordered_data,
     for read_file in read_files:
         print(read_file, flush=True, file=print_dest)
 
-        # is there a matching report file?
-        report_file = report_dict[read_file]
+        report_file = None
 
+        if report_dict:
+            # is there a matching report file?
+            file_stem, suffix = get_file_stem(read_file, [".fasta", ".fasta.gz", ".fastq", ".fastq.gz"])
+            if file_stem not in report_dict:
+                sys.exit('Error: no matching .csv file for read file: ' + read_file)
+            report_file = report_dict[file_stem]
+
+        # this can be called with a report_file containing the data for this read_file, a data_table which
+        # is a dictionary of all report files keyed by read name or neither (in which case the data is parsed
+        # from the read headers)
         process_read_file(read_file, report_file, data_table, bins, filters, min_length, max_length,
                           header_delimiters, output_files, output_reports, counts, verbosity, print_dest)
 
@@ -210,36 +224,40 @@ def get_input_files(input_path, verbosity, print_dest):
     return input_files
 
 
-def get_input_reports(input_files, input_report_path, verbosity, print_dest):
+def get_input_reports(input_report_path, verbosity, print_dest):
     '''
     returns a report dict with read file as key and report file as value (incl. paths).
-    :param input_files: The array of input files
     :param input_report_path: The path to the report files
     :param verbosity: Verbosity level to report
     :param print_dest: Where to report (stdout or stderr)
     :return: An dictionary of report files
     '''
+
+    input_report_files = []
+
+    if os.path.isfile(input_report_path):
+        input_report_files.append(input_report_path)
+
+    # If the input is a directory, search it recursively for fastq files.
+    elif os.path.isdir(input_report_path):
+        input_report_files = sorted([os.path.join(dir_path, f)
+                                     for dir_path, _, filenames in os.walk(input_report_path)
+                                     for f in filenames
+                                     if f.lower().endswith(".csv")])
+
+        if not input_report_files:
+            sys.exit('Error: could not find CSV in ' + input_report_path)
+
+    else:
+        sys.exit('Error: could not find ' + input_report_path)
+
     report_dict = {}
-    file_names = {}
-    for i in input_files:
-        file_names[i.split('/')[-1]] = i
+    for file_name in input_report_files:
+        file_stem, suffix = get_file_stem(file_name, [".csv"])
+        if not suffix.lower().endswith(".csv"):
+            sys.exit('Error: ' + file_name + ' not a .csv file')
 
-    if len(input_files) == 1:
-        if os.path.isfile(input_report_path):
-            report_dict[file_names[0]] = input_report_path
-
-    elif len(input_files) > 1:
-        if os.path.isdir(input_report_path):
-
-            for r,d,f in os.walk(input_report_path):
-                for report_file in f:
-
-                    for i in file_names:
-                        file_stem = i.split('/')[-1].rstrip(".gz") \
-                            .rstrip(".fastq").rstrip(".fasta") \
-                            .rstrip(".FASTQ").rstrip(".FASTA")
-                        if report_file.rstrip(".csv").rstrip(".CSV") == file_stem:
-                            report_dict[file_names[i]]= r + '/' + report_file
+        report_dict[file_stem] = file_name
 
     if verbosity > 0:
         print('\n' + bold_underline('Report files found:'), flush=True, file=print_dest)
@@ -247,41 +265,6 @@ def get_input_reports(input_files, input_report_path, verbosity, print_dest):
             print(report_dict[i], flush=True, file=print_dest)
 
     return report_dict
-
-
-def read_data_table(data_path, data_table, report_fields, print_dest):
-    sys.exit('Unordered data files not implemented yet.')
-
-    ### TODO implement reading of data tables into a dictionary keyed by read name
-    data_table = {}
-
-    line_number = 0
-
-    with open_func(read_file, 'rt') as in_file:
-        #report_fields = get_data_fields(in_data)
-
-        for line in in_file:
-            line_number += 1
-            data, name = get_report_data(in_file, line, line_number, None, report_fields)
-
-            data_table[name] = data
-
-    # for read_file in read_files:
-    #     try:
-    #         report_file = report_dict[read_file]
-    #
-    #         full_index_table,headers = read_index_table(report_file)
-    #
-    #         index_table = filter_index_table(full_index_table, filters, print_dest)
-    #         reads_with_reports[read_file] = index_table
-    #     except:
-    #         print("No corresponding report csv for {}!".format(read_file))
-    #         continue
-    #
-    # print(bold_underline('\nHeaders:'), flush=True, file=print_dest)
-    # print("\n".join(headers),flush=True, file=print_dest)
-
-    return data_table
 
 
 def process_read_file(read_file, report_file, data_table,
@@ -301,19 +284,13 @@ def process_read_file(read_file, report_file, data_table,
 
     report_fields = None
 
+    if report_file:
+        data_table = read_data_table(report_file, {})
+        report_fields = get_report_fields(data_table)
+
     line_number = 0
 
     with open_func(read_file, 'rt') as in_file:
-        in_report = None
-        if report_file:
-            in_report = open(report_file, 'rt')
-            report_fields = get_report_fields(in_report)
-
-            if 'fields' in output_reports:
-                # todo check that the fields are the same
-                pass
-            else:
-                output_reports['fields'] = report_fields
 
         if file_type == 'FASTA':
             # For FASTA files we need to deal with line wrapped sequences...
@@ -330,7 +307,7 @@ def process_read_file(read_file, report_file, data_table,
                 if line[0] == '>':  # Header line = start of new read
                     if header:
                         line_number += 1
-                        data = get_read_data(header, header_delimiters, report_fields, in_report, data_table, line_number)
+                        data = get_read_data(header, header_delimiters, data_table)
                         filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
                         sequence = ''
                     header = line[1:]
@@ -339,7 +316,7 @@ def process_read_file(read_file, report_file, data_table,
 
             if header:
                 line_number += 1
-                data = get_read_data(header, header_delimiters, report_fields, in_report, data_table, line_number)
+                data = get_read_data(header, header_delimiters, data_table)
                 filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, None, counts, print_dest)
 
         else: # FASTQ
@@ -350,7 +327,7 @@ def process_read_file(read_file, report_file, data_table,
                 qualities = next(in_file).strip()
 
                 line_number += 1
-                data, name = get_read_data(header, header_delimiters, report_fields, in_report, data_table, line_number)
+                data, name = get_read_data(header, header_delimiters, data_table)
                 filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data, header, sequence, qualities, counts, print_dest)
 
         in_file.close()
@@ -361,51 +338,75 @@ def process_read_file(read_file, report_file, data_table,
                 file.close()
 
 
-def get_report_fields(in_data):
-
-    for line in in_data:
-        line = line.strip()
-
-        if not line:
-            continue
-
-        return line.split(',')
-
-
-def get_read_data(header, header_delimiters, report_fields, in_data, data_table, line_number):
+def get_read_data(header, header_delimiters, data_table):
 
     name = header.split(' ')[0]
 
     if data_table:
-        return data_table[name], name
+        if not name in data_table:
+            sys.exit('Error: read with name, ' + name + ', is missing from data table')
 
-    elif in_data:
-        for line in in_data:
-            line = line.strip()
-            if not line:
-                continue
-            else:
-                return get_report_data(in_data, line, line_number, name, report_fields)
+        return data_table[name], name
 
     else:
         return get_header_data(header, header_delimiters), name
 
 
-def get_report_data(file, line, line_number, name, report_fields):
-    data = {}
-    values = line.split(',')
+# def get_report_data(file, line, line_number, name, report_fields):
+#     data = {}
+#     values = line.split(',')
+#
+#     if len(values) != len(report_fields):
+#         sys.exit('input report file, ' + file.name + ', line ' + str(line_number + 1) + ', has the wrong number of fields')
+#
+#     if name and values[0] != name:
+#         sys.exit("input report file, " + file.name + ", line " + str(line_number + 1) +
+#                  ", the first column doesn't match the name of the read")
+#
+#     for i in range(len(values)):
+#         data[report_fields[i]] = values[i]
+#
+#     return data, values[0]
 
-    if len(values) != len(report_fields):
-        sys.exit('input report file, ' + file.name + ', line ' + str(line_number + 1) + ', has the wrong number of fields')
+def read_data_table(data_path, data_table):
 
-    if name and values[0] != name:
-        sys.exit("input report file, " + file.name + ", line " + str(line_number + 1) +
-                 ", the first column doesn't match the name of the read")
+    # get the field names for the existing data_table
+    fields = get_report_fields(data_table)
 
-    for i in range(len(values)):
-        data[report_fields[i]] = values[i]
+    with open(data_path, 'rb') as csvfile:
+        new_data_table = csv.reader(csvfile)
 
-    return data, values[0]
+        line_number = 0
+
+        for row in new_data_table:
+            if line_number == 0:
+                # check this data table has the same fields as the existing one
+                for key in fields:
+                    if key not in row:
+                        sys.exit('Error: input report file, ' + csvfile.name + ', is missing column ' + key)
+
+                if "read_name" not in row:
+                    sys.exit('Error: input report file, ' + csvfile.name + ', is missing column "read_name"')
+
+            read_name = row["read_name"]
+
+            if read_name in data_table:
+                sys.exit('Error: duplicate read name, "' + read_name + '", input report file, ' + csvfile.name + ', line ' + str(line_number + 1))
+
+            # add the data to the existing data table
+            data_table[read_name] = row
+
+    # print(bold_underline('\nHeaders:'), flush=True, file=print_dest)
+    # print("\n".join(headers),flush=True, file=print_dest)
+
+    return data_table
+
+
+def get_report_fields(data_table):
+    if not data_table or len(data_table.keys()) == 0:
+        return []
+
+    return data_table[next(iter(data_table))].keys()
 
 
 def filter_bin_read(output_files, output_reports, filters, bins, min_length, max_length, data,

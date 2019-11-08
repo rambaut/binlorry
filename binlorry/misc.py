@@ -72,6 +72,16 @@ def get_sequence_file_type(filename):
         raise ValueError('File is neither FASTA or FASTQ')
 
 
+def get_file_stem(file_name, suffixes):
+
+    file_stem = file_name.split('/')[-1]
+    for suffix in suffixes:
+        if file_stem.lower().endswith(suffix):
+            return file_stem[0:-len(suffix)], suffix
+
+    return file_stem, ""
+
+
 def load_fasta_or_fastq(filename):
     """
     Returns a list of tuples (header, seq) for each record in the fasta/fastq file.
