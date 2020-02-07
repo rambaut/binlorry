@@ -154,6 +154,9 @@ def process_files(input_path, input_report_path, unordered_data,
         print(read_file, flush=True, file=print_dest)
 
         # is there a matching report file?
+        if read_file not in report_dict:
+            continue
+
         report_file = report_dict[read_file]
 
         process_read_file(read_file, report_file, data_table, bins, filters, min_length, max_length,
