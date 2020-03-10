@@ -512,13 +512,13 @@ def  get_bin_output_file(fields, bins, output_files, report):
             if not bin_name in output_files:
                 output_files[bin_name] = open(output_files['prefix'] + bin_name + output_files['suffix'], "wt")
                 if report:
-                    output_files[bin_name].write(",".join(output_files['fields']) +'\n')
+                    output_files[bin_name].write(",".join(fields) +'\n')
             return output_files[bin_name]
 
     if not 'unbinned' in output_files:
         output_files['unbinned'] = open(output_files['prefix'] + output_files['suffix'], "wt")
         if report:
-            output_files["unbinned"].write(",".join(output_files['fields']) +'\n')
+            output_files["unbinned"].write(",".join(fields) +'\n')
     return output_files['unbinned']
 
 
@@ -615,6 +615,7 @@ def get_arguments():
         args.print_dest = sys.stderr
     else:
         args.print_dest = sys.stdout
+        os.makedirs(os.path.dirname(args.output), exist_ok=True)
 
     return args
 
