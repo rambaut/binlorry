@@ -164,7 +164,7 @@ def process_files(input_path, input_report_path, unordered_data,
             # is there a matching report file?
             file_stem, suffix = get_file_stem(read_file, [".fasta", ".fasta.gz", ".fastq", ".fastq.gz"])
             if file_stem not in report_dict:
-                sys.exit('Error: no matching .csv file for read file: ' + read_file)
+                continue # If fasta file is created but not demultiplexed yet can get errors otherwise
             report_file = report_dict[file_stem]
 
         # this can be called with a report_file containing the data for this read_file, a data_table which
